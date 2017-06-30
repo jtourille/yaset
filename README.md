@@ -1,1 +1,1 @@
-# Yet another named entity recognizer
+# Yet another sequence tagger
