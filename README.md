@@ -1,1 +1,1 @@
-# Yet another sequence tagger
+# Yet Another SEquence Tagger
