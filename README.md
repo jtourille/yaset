@@ -1,1 +1,1 @@
-# yaner
+# Yet another named entity recognizer
