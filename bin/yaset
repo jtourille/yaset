@@ -1,5 +1,53 @@
 #!/usr/bin/env python
+import argparse
+import configparser
+import logging
+import os
+import sys
+import time
+
+from yaset.reader import Data
 
 if __name__ == "__main__":
 
-   pass
+    parser = argparse.ArgumentParser()
+
+    subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
+                                       help="Valid sub-commands", dest="subparser_name")
+
+    parser_learn = subparsers.add_parser('LEARN', help="Learn model")
+    parser_learn.add_argument("--config", help="Configuration file (.ini format)", dest="config", type=str,
+                              required=True)
+
+    args = parser.parse_args()
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(message)s')
+
+    if args.subparser_name == "LEARN":
+
+        # Check if config file does exist
+        if not os.path.isfile(os.path.abspath(args.config)):
+            raise FileNotFoundError("The configuration file you specified doesn't exist: {}".format(
+                os.path.abspath(args.config)
+            ))
+
+        parsed_configuration = configparser.ConfigParser(allow_no_value=False)
+        parsed_configuration.read(os.path.abspath(args.config))
+
+        train_file_path = parsed_configuration["data"]["train_file_path"]
+        dev_file_path = None
+        test_file_path = None
+        gensim_file_path = None
+
+        if parsed_configuration.getboolean("data", "use_dev_file"):
+            dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
+
+        if parsed_configuration.getboolean("data", "use_test_file"):
+            test_file_path = os.path.abspath(parsed_configuration["data"]["test_file_path"])
+
+        if parsed_configuration.getboolean("data", "use_pretained_gensim_model"):
+            gensim_file_path = os.path.abspath(parsed_configuration["data"]["gensim_model_path"])
+
+        data = Data(train_file_path, dev_data_file=dev_file_path, test_data_file=test_file_path,
+                    gensim_model_path=gensim_file_path)
