@@ -62,9 +62,12 @@ if __name__ == "__main__":
         test_file_path = None
         dev_ratio = None
 
+        # EMBEDDING LOADING AND PROCESSING
+        # ==============================================================================================================
+
         embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
 
-        logging.info("{} BEGIN EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 17))
+        logging.info("{} BEGIN - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 15))
 
         if embedding_model_type is not "random":
 
@@ -89,7 +92,10 @@ if __name__ == "__main__":
             logging.info("Building unknown token vector")
             embedding_object.build_unknown_token()
 
-        logging.info("{} END EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 19))
+        logging.info("{} END - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 17))
+
+        # LOADING AND CHECKING DATA FILES
+        # ==============================================================================================================
 
         if parsed_configuration.getboolean("data", "use_dev_file"):
             dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
@@ -98,13 +104,19 @@ if __name__ == "__main__":
             test_file_path = os.path.abspath(parsed_configuration["data"]["test_file_path"])
 
         if not dev_file_path:
-            dev_ratio = os.path.abspath(parsed_configuration["data"]["dev_ratio"])
+            dev_ratio = float(parsed_configuration["data"]["dev_ratio"])
 
-        logging.info("{} BEGIN LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
+        logging.info("{} BEGIN - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 19))
 
         data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
                          dev_ratio=dev_ratio)
 
         data.check_input_files()
 
-        logging.info("{} END LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 23))
+        logging.info("{} END - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
+
+        logging.info("{} BEGIN - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 26))
+
+        data.create_tfrecords_files(embedding_object)
+
+        logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
