@@ -1,16 +1,20 @@
 #!/usr/bin/env python
 import argparse
 import configparser
+import importlib
 import logging
 import os
 import sys
 import time
 
-from yaset.reader import Data
+from yaset.data.reader import TrainData
+from yaset.tools import ensure_dir
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+
+    parser.add_argument("--debug", action='store_true')
 
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
@@ -21,8 +25,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(message)s')
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+
+    if args.debug:
+        logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
+        logging.getLogger('gensim').setLevel(logging.WARNING)
+    else:
+        logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+        logging.getLogger('gensim').setLevel(logging.WARNING)
 
     if args.subparser_name == "LEARN":
 
@@ -35,10 +45,51 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=False)
         parsed_configuration.read(os.path.abspath(args.config))
 
+        if not os.path.isdir(os.path.abspath(parsed_configuration["data"]["top_working_dir"])):
+            raise NotADirectoryError("The top working directory you specified does not exists: {}".format(
+                parsed_configuration["data"]["top_working_dir"]
+            ))
+
+        current_working_directory = os.path.join(
+            os.path.abspath(parsed_configuration["data"]["top_working_dir"]),
+            "yaset-learn-{}".format(timestamp)
+        )
+
+        ensure_dir(current_working_directory)
+
         train_file_path = parsed_configuration["data"]["train_file_path"]
         dev_file_path = None
         test_file_path = None
-        gensim_file_path = None
+        dev_ratio = None
+
+        embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
+
+        logging.info("{} BEGIN EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 17))
+
+        if embedding_model_type is not "random":
+
+            logging.info("Model type: {}".format(embedding_model_type))
+
+            embedding_file_path = os.path.abspath(parsed_configuration["data"]["embedding_model_path"])
+            if not os.path.isfile(embedding_file_path):
+                raise FileNotFoundError("The embedding file you specified doesn't exist: {}".format(
+                    embedding_file_path
+                ))
+
+            logging.info("File path: {}".format(embedding_file_path))
+
+            logging.info("Creating embedding object")
+            embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
+            embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
+            embedding_object = embedding_class(embedding_file_path)
+
+            logging.info("Loading matrix")
+            embedding_object.load_embedding()
+
+            logging.info("Building unknown token vector")
+            embedding_object.build_unknown_token()
+
+        logging.info("{} END EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 19))
 
         if parsed_configuration.getboolean("data", "use_dev_file"):
             dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
@@ -46,8 +97,14 @@ if __name__ == "__main__":
         if parsed_configuration.getboolean("data", "use_test_file"):
             test_file_path = os.path.abspath(parsed_configuration["data"]["test_file_path"])
 
-        if parsed_configuration.getboolean("data", "use_pretained_gensim_model"):
-            gensim_file_path = os.path.abspath(parsed_configuration["data"]["gensim_model_path"])
+        if not dev_file_path:
+            dev_ratio = os.path.abspath(parsed_configuration["data"]["dev_ratio"])
 
-        data = Data(train_file_path, dev_data_file=dev_file_path, test_data_file=test_file_path,
-                    gensim_model_path=gensim_file_path)
+        logging.info("{} BEGIN LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
+
+        data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
+                         dev_ratio=dev_ratio)
+
+        data.check_input_files()
+
+        logging.info("{} END LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 23))
