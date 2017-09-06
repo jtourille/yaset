@@ -10,6 +10,9 @@ setup(name='yaset',
       packages=['yaset'],
       install_requires=[
           'scikit_learn',
+          'tensorflow',
+          'gensim',
+          'numpy'
       ],
       scripts=['bin/yaset'],
       zip_safe=False)
