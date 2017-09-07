@@ -40,6 +40,12 @@ class TrainData:
         self.tfrecords_train_file = os.path.join(self.tfrecords_dir_path, "train.tfrecords")
         self.tfrecords_dev_file = os.path.join(self.tfrecords_dir_path, "dev.tfrecords")
 
+        self.nb_train_instances = None
+        self.nb_dev_instances = None
+
+        self.length_train_instances = None
+        self.length_dev_instances = None
+
         self.label_mapping = list()
 
     def check_input_files(self):
@@ -119,14 +125,17 @@ class TrainData:
             # Dividing the index list into train and dev parts
             train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio, random_state=42)
 
+            self.nb_train_instances = len(train_indexes)
+            self.nb_dev_instances = len(dev_indexes)
+
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Train...")
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file, embedding_object,
-                                       indexes=train_indexes)
+            self.length_train_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
+                                                                     embedding_object, indexes=train_indexes)
 
             logging.info("Dev...")
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file, embedding_object,
-                                       indexes=dev_indexes)
+            self.length_dev_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
+                                                                   embedding_object, indexes=dev_indexes)
 
     @staticmethod
     def _get_number_sequences(data_file_path):
@@ -168,8 +177,10 @@ class TrainData:
         """
 
         # Will contains labels and tokens
-        labels = defaultdict(int)
-        tokens = defaultdict(int)
+        labels = list()
+        tokens = list()
+
+        length_sequences = list()
 
         sequence_id = 0
 
@@ -187,6 +198,7 @@ class TrainData:
 
                         if sequence_id in indexes:
                             self._write_example_to_file(writer, tokens, labels, embedding_object)
+                            length_sequences.append(len(tokens))
 
                         tokens.clear()
                         labels.clear()
@@ -197,14 +209,17 @@ class TrainData:
                 parts = line.rstrip("\n").split("\t")
                 current_sequence += 1
 
-                tokens[parts[0]] += 1
-                labels[parts[-1]] += 1
+                tokens.append(parts[0])
+                labels.append(parts[-1])
 
             if current_sequence > 0:
                 if sequence_id in indexes:
                     self._write_example_to_file(writer, tokens, labels, embedding_object)
+                    length_sequences.append(len(tokens))
 
         writer.close()
+
+        return length_sequences
 
     def _write_example_to_file(self, writer, tokens, labels, embedding_object):
         """
@@ -217,6 +232,8 @@ class TrainData:
         """
 
         example = tf.train.SequenceExample()
+
+        example.context.feature["x_length"].int64_list.value.append(len(tokens))
 
         x_tokens = example.feature_lists.feature_list["x_tokens"]
         y = example.feature_lists.feature_list["y"]
