@@ -9,6 +9,20 @@ import time
 
 from yaset.data.reader import TrainData
 from yaset.tools import ensure_dir
+from yaset.nn.train import train_model
+
+
+def get_training_parameters(parsed_configuration):
+
+    parameters = dict()
+
+    parameters["max_iterations"] = int(parsed_configuration["training"]["max_iterations"])
+    parameters["patience"] = int(parsed_configuration["training"]["patience"])
+    parameters["hidden_layer_size"] = int(parsed_configuration["training"]["hidden_layer_size"])
+    parameters["cpu_cores"] = int(parsed_configuration["training"]["cpu_cores"])
+    parameters["batch_size"] = int(parsed_configuration["training"]["batch_size"])
+
+    return parameters
 
 if __name__ == "__main__":
 
@@ -120,3 +134,10 @@ if __name__ == "__main__":
         data.create_tfrecords_files(embedding_object)
 
         logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
+
+        logging.info("{} BEGIN - LEARNING MODEL {}".format("=" * 10, "=" * 36))
+
+        train_config = get_training_parameters(parsed_configuration)
+        train_model(current_working_directory, embedding_object, data, train_config)
+
+        logging.info("{} END - LEARNING MODEL {}".format("=" * 10, "=" * 38))
