@@ -40,11 +40,26 @@ class TrainData:
         self.tfrecords_train_file = os.path.join(self.tfrecords_dir_path, "train.tfrecords")
         self.tfrecords_dev_file = os.path.join(self.tfrecords_dir_path, "dev.tfrecords")
 
-        self.nb_train_instances = None
-        self.nb_dev_instances = None
+        self.nb_train_instances = 0
+        self.nb_dev_instances = 0
 
-        self.length_train_instances = None
-        self.length_dev_instances = None
+        self.length_train_instances = list()
+        self.length_dev_instances = list()
+
+        # UNKNOWN WORDS
+        # ==================================
+        self.nb_unknown_words_train = 0
+        self.nb_unknown_words_dev = 0
+
+        self.unknown_words_set_train = set()
+        self.unknown_words_set_dev = set()
+
+        self.unkwown_word_file_train = os.path.join(working_dir, "unk_words_train.lst")
+        self.unkwown_word_file_dev = os.path.join(working_dir, "unk_words_dev.lst")
+        # ==================================
+
+        self.nb_words_train = 0
+        self.nb_words_dev = 0
 
         self.label_mapping = list()
 
@@ -130,14 +145,29 @@ class TrainData:
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Train...")
-            self.length_train_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
-                                                                     embedding_object, indexes=train_indexes,
-                                                                     part="TRAIN")
+            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
+                                       embedding_object, indexes=train_indexes, part="TRAIN")
+            logging.info("* Nb. words: {:,}".format(self.nb_words_train))
+            logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
+                self.nb_unknown_words_train,
+                (self.nb_unknown_words_train / self.nb_words_train) * 100
+            ))
+            logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_train)))
+            logging.info("* Dumping unknown word list to file")
+            self._dump_unknown_word_set(self.unknown_words_set_train, self.unkwown_word_file_train)
 
             logging.info("Dev...")
-            self.length_dev_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
-                                                                   embedding_object, indexes=dev_indexes,
-                                                                   part="DEV")
+            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
+                                       embedding_object, indexes=dev_indexes, part="DEV")
+
+            logging.info("* Nb. words: {:,}".format(self.nb_words_dev))
+            logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
+                self.nb_unknown_words_dev,
+                (self.nb_unknown_words_dev / self.nb_words_dev) * 100
+            ))
+            logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_dev)))
+            logging.info("* Dumping unknown word list to file")
+            self._dump_unknown_word_set(self.unknown_words_set_dev, self.unkwown_word_file_dev)
 
     @staticmethod
     def _get_number_sequences(data_file_path):
@@ -182,8 +212,6 @@ class TrainData:
         labels = list()
         tokens = list()
 
-        length_sequences = list()
-
         sequence_id = 0
 
         writer = tf.python_io.TFRecordWriter(target_tfrecords_file_path)
@@ -200,8 +228,7 @@ class TrainData:
 
                         if sequence_id in indexes:
                             self._write_example_to_file(writer, tokens, labels, embedding_object,
-                                                        "{}-{}".format(part, sequence_id))
-                            length_sequences.append(len(tokens))
+                                                        "{}-{}".format(part, sequence_id), part)
 
                         tokens.clear()
                         labels.clear()
@@ -218,14 +245,11 @@ class TrainData:
             if current_sequence > 0:
                 if sequence_id in indexes:
                     self._write_example_to_file(writer, tokens, labels, embedding_object,
-                                                "{}-{}".format(part, sequence_id))
-                    length_sequences.append(len(tokens))
+                                                "{}-{}".format(part, sequence_id), part)
 
         writer.close()
 
-        return length_sequences
-
-    def _write_example_to_file(self, writer, tokens, labels, embedding_object, example_id):
+    def _write_example_to_file(self, writer, tokens, labels, embedding_object, example_id, part):
         """
         Write an example to a TFRecords file
         :param writer: opened TFRecordWriter
@@ -234,6 +258,13 @@ class TrainData:
         :param embedding_object: yaset embedding object
         :return: nothing
         """
+
+        if part == "TRAIN":
+            self.nb_train_instances += 1
+            self.length_train_instances.append(len(tokens))
+        else:
+            self.nb_dev_instances += 1
+            self.length_dev_instances.append(len(tokens))
 
         example = tf.train.SequenceExample()
 
@@ -249,8 +280,19 @@ class TrainData:
 
             token_id = embedding_object.word_mapping.get(token)
 
+            if part == "TRAIN":
+                self.nb_words_train += 1
+            else:
+                self.nb_words_dev += 1
+
             if not token_id:
                 token_id = embedding_object.word_mapping.get("##UNK##")
+                if part == "TRAIN":
+                    self.nb_unknown_words_train += 1
+                    self.unknown_words_set_train.add(token)
+                else:
+                    self.nb_unknown_words_dev += 1
+                    self.unknown_words_set_dev.add(token)
 
             label_id = self.label_mapping.index(label)
 
@@ -258,3 +300,10 @@ class TrainData:
             y.feature.add().int64_list.value.append(label_id)
 
         writer.write(example.SerializeToString())
+
+    @staticmethod
+    def _dump_unknown_word_set(word_set, target_file):
+
+        with open(target_file, "w", encoding="UTF-8") as output_file:
+            for item in sorted(word_set):
+                output_file.write("{}\n".format(item))
