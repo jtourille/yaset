@@ -25,6 +25,7 @@ def read_and_decode(filename_queue, target_size):
         # Contextual TFRecords features
         context_features = {
             "x_length": tf.FixedLenFeature([], dtype=tf.int64),
+            "x_id": tf.FixedLenFeature([], dtype=tf.string)
         }
 
         # Sequential TFRecords features
@@ -42,6 +43,7 @@ def read_and_decode(filename_queue, target_size):
 
         # Preparing tensor list, casting values to 32 bits when necessary
         tensor_list = [
+            context_parsed["x_id"],
             tf.cast(context_parsed["x_length"], tf.int32),
             tf.cast(sequence_parsed["x_tokens"], dtype=tf.int32),
             tf.one_hot(indices=tf.cast(sequence_parsed["y"], dtype=tf.int32), depth=target_size),
@@ -75,7 +77,8 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
         tensor_list = read_and_decode(filename_queue, num_classes)
 
         # Random shuffle queue, allow for randomization of training instances (maximum size: 50% of nb. instances)
-        shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=[tf.int32, tf.int32, tf.float32])
+        shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=[tf.string, tf.int32, tf.int32,
+                                                                                        tf.float32])
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op_shuffle_queue = shuffle_queue.enqueue(tensor_list)
@@ -83,36 +86,48 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
         queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 1))
 
         # Bucketing according to bucket boundaries passed as arguments
-        length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[0], inputs, batch_size,
+        length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
                                                                       sorted(buckets),
                                                                       num_threads=4,
                                                                       capacity=32,
-                                                                      shapes=[[], [None], [None, None]],
+                                                                      shapes=[[], [], [None], [None, None]],
                                                                       dynamic_pad=True)
 
         return queue_runner_list, [filename_queue, shuffle_queue], batch
 
 
-# def _build_dev_pipeline(tfrecords_file_path, num_classes=None):
-#
-#     with tf.device('/cpu:0'):
-#
-#         tfrecords_list = [tfrecords_file_path]
-#
-#         filename_queue = tf.train.string_input_producer(tfrecords_list)
-#
-#         tensor_list = read_and_decode(filename_queue, num_classes)
-#
-#         padding_queue = tf.PaddingFIFOQueue(1000, dtypes=[tf.int32, tf.int32, tf.float32],
-#                                             shapes=[[], [None], [None, None]])
-#
-#         enqueue_op = padding_queue.enqueue(tensor_list)
-#         batch = padding_queue.dequeue_many(1)
-#
-#         queue_runner_list = list()
-#         queue_runner_list.append(tf.train.QueueRunner(padding_queue, [enqueue_op] * 1))
-#
-#         return queue_runner_list, batch
+def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, nb_instances=None):
+    """
+    Build the dev pipeline
+    :param tfrecords_file_path: dev TFRecords file path
+    :param num_classes: number of labels (for one-hot encoding)
+    :return: queue runner list, queues, symbolic link to mini-batch
+    """
+
+    with tf.device('/cpu:0'):
+
+        # Creating a list with tfrecords
+        tfrecords_list = [tfrecords_file_path]
+
+        # Will contains queue runners for thread creation
+        queue_runner_list = list()
+
+        # Filename queue, contains only on filename (train TFRecords file)
+        filename_queue = tf.train.string_input_producer(tfrecords_list)
+
+        # Decode one example
+        tensor_list = read_and_decode(filename_queue, num_classes)
+
+        # Main queue
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.float32],
+                                            shapes=[[], [], [None], [None, None]])
+
+        # Enqueue and dequeue Ops + queue runner creation
+        enqueue_op = padding_queue.enqueue(tensor_list)
+        batch = padding_queue.dequeue_many(batch_size)
+        queue_runner_list.append(tf.train.QueueRunner(padding_queue, [enqueue_op] * 1))
+
+        return queue_runner_list, [filename_queue, padding_queue], batch
 
 
 def train_model(working_dir, embedding_object, data_object, train_config):
@@ -130,23 +145,29 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     # Creating TensorFlow thread coordinator
     coord = tf.train.Coordinator()
 
-    logging.debug("-> Computing bucket boundaries")
+    logging.debug("-> Computing bucket boundaries for train instances")
     train_bucket_boundaries = compute_bucket_boundaries(data_object.length_train_instances, train_config["batch_size"])
-    # dev_bucket_boundaries = compute_bucket_boundaries(data_object.length_dev_instances, batch_size)
 
     train_nb_examples = data_object.nb_train_instances
+    dev_nb_examples = data_object.nb_dev_instances
 
     tfrecords_train_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "train.tfrecords")
-    # tfrecords_dev_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "dev.tfrecords")
+    tfrecords_dev_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "dev.tfrecords")
 
     logging.debug("-> Building train input pipeline")
-    queue_runner_list_train, queue_list_train, batch_train = _build_train_pipeline(tfrecords_train_file_path,
-                                                                                   train_bucket_boundaries,
-                                                                                   num_classes=len(data_object.
-                                                                                                   label_mapping),
-                                                                                   batch_size=train_config["batch_size"])
+    queue_runner_list_train, queue_list_train,\
+        batch_train = _build_train_pipeline(tfrecords_train_file_path,
+                                            train_bucket_boundaries,
+                                            num_classes=len(data_object.label_mapping),
+                                            batch_size=train_config["batch_size"],
+                                            nb_instances=train_nb_examples)
 
-    # queue_runner_list_dev, batch_dev = _build_dev_pipeline(tfrecords_dev_file_path, num_classes=num_classes)
+    logging.debug("-> Building dev input pipeline")
+    queue_runner_list_dev, queue_list_dev,\
+        batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
+                                        num_classes=len(data_object.label_mapping),
+                                        batch_size=train_config["batch_size"],
+                                        nb_instances=dev_nb_examples)
 
     model_args = {
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
@@ -161,6 +182,9 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     with tf.name_scope('train'):
         model_train = BiLSTMCRF(batch_train, reuse=False, **model_args)
 
+    with tf.name_scope('dev'):
+        model_dev = BiLSTMCRF(batch_dev, reuse=True, **model_args)
+
     with tf.device('/cpu:0'):
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
@@ -172,6 +196,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
 
     logging.debug("-> Launching threads")
     threads_train = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_train]
+    threads_dev = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_dev]
+
     _ = tf.train.start_queue_runners(sess=sess, coord=coord)
 
     params = {
@@ -196,7 +222,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
 
         if counter % display_every_n == 0 or cur_percentage >= 100:
 
-            logging.info("* epoch={} ({}%), loss={}, processed={}".format(
+            logging.info("* epoch={} ({:05.2f}%), loss={:2d.4f}, processed={}".format(
                 iteration_number,
                 round(cur_percentage, 2),
                 loss,
@@ -207,11 +233,19 @@ def train_model(working_dir, embedding_object, data_object, train_config):
             iteration_number += 1
 
     logging.info("Stopping everything gracefully (or at least trying to)")
+
     coord.request_stop()
+
     for item in queue_list_train:
         item.close(cancel_pending_enqueues=True)
 
+    for item in queue_list_dev:
+        item.close(cancel_pending_enqueues=True)
+
     for item in threads_train:
+        coord.join(item)
+
+    for item in threads_dev:
         coord.join(item)
 
     sess.close()
