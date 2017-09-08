@@ -131,11 +131,13 @@ class TrainData:
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Train...")
             self.length_train_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
-                                                                     embedding_object, indexes=train_indexes)
+                                                                     embedding_object, indexes=train_indexes,
+                                                                     part="TRAIN")
 
             logging.info("Dev...")
             self.length_dev_instances = self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
-                                                                   embedding_object, indexes=dev_indexes)
+                                                                   embedding_object, indexes=dev_indexes,
+                                                                   part="DEV")
 
     @staticmethod
     def _get_number_sequences(data_file_path):
@@ -166,7 +168,7 @@ class TrainData:
 
         return sequence_count
 
-    def _convert_to_tfrecords(self, data_file, target_tfrecords_file_path, embedding_object, indexes=None):
+    def _convert_to_tfrecords(self, data_file, target_tfrecords_file_path, embedding_object, indexes=None, part=None):
         """
         Create a TFRecords file
         :param data_file: source data files containing the sequences to write to the TFRecords file
@@ -197,7 +199,8 @@ class TrainData:
                         current_sequence = 0
 
                         if sequence_id in indexes:
-                            self._write_example_to_file(writer, tokens, labels, embedding_object)
+                            self._write_example_to_file(writer, tokens, labels, embedding_object,
+                                                        "{}-{}".format(part, sequence_id))
                             length_sequences.append(len(tokens))
 
                         tokens.clear()
@@ -214,14 +217,15 @@ class TrainData:
 
             if current_sequence > 0:
                 if sequence_id in indexes:
-                    self._write_example_to_file(writer, tokens, labels, embedding_object)
+                    self._write_example_to_file(writer, tokens, labels, embedding_object,
+                                                "{}-{}".format(part, sequence_id))
                     length_sequences.append(len(tokens))
 
         writer.close()
 
         return length_sequences
 
-    def _write_example_to_file(self, writer, tokens, labels, embedding_object):
+    def _write_example_to_file(self, writer, tokens, labels, embedding_object, example_id):
         """
         Write an example to a TFRecords file
         :param writer: opened TFRecordWriter
@@ -233,6 +237,9 @@ class TrainData:
 
         example = tf.train.SequenceExample()
 
+        example.context.feature["x_id"].bytes_list.value.append(
+            tf.compat.as_bytes(example_id)
+        )
         example.context.feature["x_length"].int64_list.value.append(len(tokens))
 
         x_tokens = example.feature_lists.feature_list["x_tokens"]
