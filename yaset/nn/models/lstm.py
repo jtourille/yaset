@@ -139,9 +139,6 @@ class BiLSTMCRF:
 
         loss = tf.reduce_mean(-log_likelihood)
 
-        # cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=self.prediction, labels=self.y)
-        # cross_entropy = tf.reduce_mean(cross_entropy)
-
         return loss
 
     @lazy_property
