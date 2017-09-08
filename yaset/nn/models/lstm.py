@@ -20,44 +20,51 @@ class BiLSTMCRF:
 
     def __init__(self, batch, reuse=False, **kwargs):
 
-        self.x_tokens_len = batch[0]
-        self.x_tokens_fw = batch[1]
+        self.x_tokens_len = batch[1]
+        self.x_tokens_fw = batch[2]
         self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
-        self.y = batch[2]
+        self.y = batch[3]
 
         self.reuse = reuse
 
         self.pl_dropout = kwargs["pl_dropout"]
-        self.pl_emb = kwargs["pl_emb"]
+
+        if not self.reuse:
+            self.pl_emb = kwargs["pl_emb"]
+
         self.lstm_hidden_size = kwargs["lstm_hidden_size"]
         self.output_size = kwargs["output_size"]
 
-        # self.transitions_params = tf.Variable([self.output_size, self.output_size], dtype=np.float32)
-        self.transitions_params = tf.get_variable('transition_params',
-                                                  dtype=tf.float32,
-                                                  shape=[self.output_size,self.output_size],
-                                                  initializer=tf.random_uniform_initializer(0., 1.),
-                                                  trainable=True)
-
         with tf.device('/cpu:0'):
-            # Initializing main word embedding matrix
-            self.W = tf.get_variable('embedding_matrix_word',
-                                     dtype=tf.float32,
-                                     shape=[kwargs["word_embedding_matrix_shape"][0],
-                                            kwargs["word_embedding_matrix_shape"][1]],
-                                     initializer=tf.random_uniform_initializer(-1.0, 1.0),
-                                     trainable=True)
-            self.embedding_tokens_init = self.W.assign(self.pl_emb)
+            with tf.variable_scope('matrices', reuse=self.reuse):
+
+                self.transitions_params = tf.get_variable('transition_params',
+                                                          dtype=tf.float32,
+                                                          shape=[self.output_size, self.output_size],
+                                                          initializer=tf.random_uniform_initializer(0., 1.),
+                                                          trainable=True)
+
+                self.W = tf.get_variable('embedding_matrix_word',
+                                         dtype=tf.float32,
+                                         shape=[kwargs["word_embedding_matrix_shape"][0],
+                                                kwargs["word_embedding_matrix_shape"][1]],
+                                         initializer=tf.random_uniform_initializer(-1.0, 1.0),
+                                         trainable=True)
+
+            if not self.reuse:
+                self.embedding_tokens_init = self.W.assign(self.pl_emb)
 
         with tf.device("/cpu:0"):
 
             self.embed_words_fw
             self.embed_words_bw
 
-            self.forward_representation
-            self.backward_representation
+        self.forward_representation
+        self.backward_representation
 
-            self.prediction
+        self.prediction
+
+        if not self.reuse:
             self.loss
             self.optimize
 
