@@ -54,8 +54,8 @@ class TrainData:
         self.unknown_words_set_train = set()
         self.unknown_words_set_dev = set()
 
-        self.unkwown_word_file_train = os.path.join(working_dir, "unk_words_train.lst")
-        self.unkwown_word_file_dev = os.path.join(working_dir, "unk_words_dev.lst")
+        self.unknown_word_file_train = os.path.join(working_dir, "unk_words_train.lst")
+        self.unknown_word_file_dev = os.path.join(working_dir, "unk_words_dev.lst")
         # ==================================
 
         self.nb_words_train = 0
@@ -154,7 +154,7 @@ class TrainData:
             ))
             logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_train)))
             logging.info("* Dumping unknown word list to file")
-            self._dump_unknown_word_set(self.unknown_words_set_train, self.unkwown_word_file_train)
+            self._dump_unknown_word_set(self.unknown_words_set_train, self.unknown_word_file_train)
 
             logging.info("Dev...")
             self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
@@ -167,7 +167,7 @@ class TrainData:
             ))
             logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_dev)))
             logging.info("* Dumping unknown word list to file")
-            self._dump_unknown_word_set(self.unknown_words_set_dev, self.unkwown_word_file_dev)
+            self._dump_unknown_word_set(self.unknown_words_set_dev, self.unknown_word_file_dev)
 
     @staticmethod
     def _get_number_sequences(data_file_path):
