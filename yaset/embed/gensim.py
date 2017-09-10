@@ -4,6 +4,7 @@ import os
 
 import gensim
 import numpy as np
+import json
 
 from ..error import UnknownTokenAlreadyExists
 
@@ -91,3 +92,6 @@ class GensimEmbeddings:
         # Creating a mapping for the unknown token vector
         self.word_mapping["##UNK##"] = self.embedding_matrix.shape[0] - 1
 
+    def dump_word_mapping(self, target_file):
+
+        json.dump(self.word_mapping, open(target_file, "w", encoding="UTF-8"))
