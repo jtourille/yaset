@@ -10,7 +10,7 @@ import shutil
 
 from yaset.data.reader import TrainData, TestData
 from yaset.tools import ensure_dir
-from yaset.nn.train import train_model
+from yaset.nn.train import train_model, apply_model
 
 
 def get_training_parameters(parsed_configuration):
@@ -187,3 +187,9 @@ if __name__ == "__main__":
         data.convert_to_tfrecords(input_file, target_tfrecords_file_path)
 
         logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
+
+        logging.info("{} BEGIN - APPLYING MODEL {}".format("=" * 10, "=" * 36))
+
+        apply_model(current_working_directory, model_path, data)
+
+        logging.info("{} END - APPLYING MODEL {}".format("=" * 10, "=" * 38))

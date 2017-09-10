@@ -309,10 +309,11 @@ class TrainData:
             for item in sorted(word_set):
                 output_file.write("{}\n".format(item))
 
-    def dump_data_characteristics(self, target_file):
+    def dump_data_characteristics(self, target_file, embedding_object):
 
         payload = {
-            "label_mapping": self.label_mapping
+            "label_mapping": self.label_mapping,
+            "embedding_matrix_shape": embedding_object.embedding_matrix.shape
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
@@ -447,7 +448,7 @@ class TestData:
             (self.nb_unknown_words / self.nb_words) * 100
         ))
         logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set)))
-        logging.info("* Dumping unknown word list to file")
+        logging.info("Dumping unknown word list to file")
         self._dump_unknown_word_set(self.unknown_words_set, self.unknown_word_file)
 
     def _write_example_to_file(self, writer, tokens, example_id):
@@ -486,6 +487,42 @@ class TestData:
             x_tokens.feature.add().int64_list.value.append(token_id)
 
         writer.write(example.SerializeToString())
+
+    def write_predictions_to_file(self, target_file, pred_sequences):
+
+        with open(self.test_data_file, "r", encoding="UTF-8") as input_file:
+            with open(os.path.abspath(target_file), "w", encoding="UTF-8") as output_file:
+
+                sequence_parts = list()
+                sequence_id = 0
+
+                for line in input_file:
+                    if re.match("^$", line):
+                        if len(sequence_parts) > 0:
+                            cur_pred_seq = pred_sequences["TEST-{}".format(sequence_id)]
+
+                            for token, pred in zip(sequence_parts, cur_pred_seq):
+
+                                output_file.write('{}\n'.format(
+                                    "\t".join(token + [self.label_mapping[pred]])
+                                ))
+
+                            sequence_id += 1
+                            sequence_parts.clear()
+
+                        output_file.write("\n")
+                        continue
+
+                    parts = line.rstrip("\n").split("\t")
+                    sequence_parts.append(parts)
+
+                if len(sequence_parts) > 0:
+                    cur_pred_seq = pred_sequences["TEST-{}".format(sequence_id)]
+
+                    for token, pred in zip(sequence_parts, cur_pred_seq):
+                        output_file.write('{}\n'.format(
+                            "\t".join(token + [self.label_mapping[pred]])
+                        ))
 
     @staticmethod
     def _dump_unknown_word_set(word_set, target_file):
