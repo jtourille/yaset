@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from .helpers import TrainLogger
 from .models.lstm import BiLSTMCRF
+from ..tools import ensure_dir
 
 
 def read_and_decode(filename_queue, target_size):
@@ -200,6 +201,13 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     with tf.device('/cpu:0'):
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
+    # TensorFlow model saver
+    tf_model_saver_path = os.path.join(os.path.abspath(working_dir), "tfmodels")
+    tf_model_saving_name = os.path.join(tf_model_saver_path, "model.ckpt")
+    ensure_dir(tf_model_saver_path)
+
+    saver = tf.train.Saver(max_to_keep=0)
+
     # Creating TensorFlow Session object
     logging.debug("-> Creating TensorFlow session and initializing graph")
     sess = tf.Session(config=config_tf)
@@ -228,9 +236,11 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     train_counter = 0
 
     train_logger = TrainLogger()
+    train_logger_dump_filename = os.path.join(os.path.abspath(working_dir), "train_stats.json")
 
     # Looping until max iteration is reached
-    while iteration_number <= train_config["max_iterations"]:
+    # while iteration_number <= train_config["max_iterations"]:
+    while iteration_number <= 2:
 
         # Resetting the counter if an iteration has been completed
         if train_counter >= train_nb_examples:
@@ -298,6 +308,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
 
             # Adding iteration score to train logger object
             train_logger.add_score(iteration_number - 1, accuracy)
+            model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
+            logging.info("Model has been saved at: {}".format(model_name))
 
         # Setting dropout to 0.5 for learning
         params = {
@@ -320,20 +332,38 @@ def train_model(working_dir, embedding_object, data_object, train_config):
                 train_counter
             ))
 
+    logging.info("Saving model characteristics")
+
+    logging.debug("* Dumping train logger")
+    train_logger.save_to_file(train_logger_dump_filename)
+
+    logging.debug("* Dumping data characteristics")
+    target_data_characteristics_file = os.path.join(working_dir, 'data_char.json')
+    data_object.dump_data_characteristics(target_data_characteristics_file)
+
+    logging.debug("* Dumping word mapping")
+    target_word_mapping_file = os.path.join(working_dir, 'word_mapping.json')
+    embedding_object.dump_word_mapping(target_word_mapping_file)
+
     # Stopping everything gracefully
     logging.info("Stopping everything gracefully (or at least trying to)")
 
+    logging.debug("* Requesting stop")
     coord.request_stop()
 
+    logging.debug("* Closing 'train' pipeline queues")
     for item in queue_list_train:
         item.close(cancel_pending_enqueues=True)
 
+    logging.debug("* Closing 'dev' pipeline queues")
     for item in queue_list_dev:
         item.close(cancel_pending_enqueues=True)
 
+    logging.debug("* Closing 'train' pipeline threads")
     for item in threads_train:
         coord.join(item)
 
+    logging.debug("* Closing 'dev' pipeline threads")
     for item in threads_dev:
         coord.join(item)
 
