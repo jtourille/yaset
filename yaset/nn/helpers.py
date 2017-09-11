@@ -115,7 +115,7 @@ class TrainLogger:
         :return: list of iteration numbers
         """
 
-        score_list = [ite["score"] for ite_nb, ite in sorted(self.iterations_log.items())]
+        score_list = [ite["dev_score"] for ite_nb, ite in sorted(self.iterations_log.items())]
         score_max = max(score_list)
 
         best_iteration = score_list.index(score_max) + 1
