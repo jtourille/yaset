@@ -12,7 +12,8 @@ setup(name='yaset',
           'scikit_learn',
           'tensorflow',
           'gensim',
-          'numpy'
+          'numpy',
+          'prettytable'
       ],
       scripts=['bin/yaset'],
       zip_safe=False)
