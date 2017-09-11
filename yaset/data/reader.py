@@ -290,10 +290,8 @@ class TrainData:
         """
 
         if part == "TRAIN":
-            self.nb_train_instances += 1
             self.length_train_instances.append(len(tokens))
         else:
-            self.nb_dev_instances += 1
             self.length_dev_instances.append(len(tokens))
 
         example = tf.train.SequenceExample()
