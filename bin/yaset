@@ -119,6 +119,7 @@ if __name__ == "__main__":
         dev_file_path = None
         test_file_path = None
         dev_ratio = None
+        dev_random_seed = None
 
         # EMBEDDING LOADING AND PROCESSING
         # ===========================================================
@@ -203,7 +204,10 @@ if __name__ == "__main__":
 
         logging.info("{} BEGIN - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 26))
 
-        data.create_tfrecords_files(embedding_object)
+        if parsed_configuration.getboolean("data", "dev_use_random_seed"):
+            dev_random_seed = parsed_configuration.getint("data", "dev_random_seed")
+
+        data.create_tfrecords_files(embedding_object, random_seed=dev_random_seed)
 
         logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
 
