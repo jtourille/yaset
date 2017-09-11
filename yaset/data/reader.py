@@ -143,9 +143,10 @@ class TrainData:
             logging.info("-> {}: {:,}".format(k, v))
             self.label_mapping.append(k)
 
-    def create_tfrecords_files(self, embedding_object):
+    def create_tfrecords_files(self, embedding_object, random_seed=None):
         """
         Create 'train' and 'dev' TFRecords files
+        :param random_seed: random seed for train/dev splitting
         :param embedding_object: yaset embedding object to use for token IDs fetching
         :return: nothing
         """
@@ -160,21 +161,26 @@ class TrainData:
             sequence_indexes = list(range(sequence_nb_train))
 
             # Dividing the index list into train and dev parts
-            train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio, random_state=42)
+            train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio,
+                                                          random_state=random_seed)
 
             self.nb_train_instances = len(train_indexes)
             self.nb_dev_instances = len(dev_indexes)
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Train...")
+
             self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
                                        embedding_object, indexes=train_indexes, part="TRAIN")
+
             logging.info("* Nb. words: {:,}".format(self.nb_words_train))
             logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
                 self.nb_unknown_words_train,
                 (self.nb_unknown_words_train / self.nb_words_train) * 100
             ))
             logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_train)))
+
+            # Dumping unknown word set to working dir
             logging.info("* Dumping unknown word list to file")
             self._dump_unknown_word_set(self.unknown_words_set_train, self.unknown_word_file_train)
 
@@ -188,6 +194,8 @@ class TrainData:
                 (self.nb_unknown_words_dev / self.nb_words_dev) * 100
             ))
             logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_dev)))
+
+            # Dumping unknown word set to working dir
             logging.info("* Dumping unknown word list to file")
             self._dump_unknown_word_set(self.unknown_words_set_dev, self.unknown_word_file_dev)
 
@@ -325,6 +333,12 @@ class TrainData:
 
     @staticmethod
     def _dump_unknown_word_set(word_set, target_file):
+        """
+        Dump unknown word set to file
+        :param word_set: word set to dump
+        :param target_file: target path where to dump the set
+        :return: nothing
+        """
 
         with open(target_file, "w", encoding="UTF-8") as output_file:
             for item in sorted(word_set):
