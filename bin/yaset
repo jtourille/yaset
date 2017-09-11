@@ -4,25 +4,30 @@ import configparser
 import importlib
 import logging
 import os
+import shutil
 import sys
 import time
-import shutil
 
 from yaset.data.reader import TrainData, TestData
-from yaset.tools import ensure_dir
 from yaset.nn.train import train_model, apply_model
+from yaset.tools import ensure_dir
 
 
-def get_training_parameters(parsed_configuration):
+def get_training_parameters(configuration):
+    """
+    Fetch training parameters from a configparser object
+    :param configuration: configparser object
+    :return: a dictionary of parameters
+    """
 
     parameters = dict()
 
-    parameters["max_iterations"] = int(parsed_configuration["training"]["max_iterations"])
-    parameters["patience"] = int(parsed_configuration["training"]["patience"])
-    parameters["hidden_layer_size"] = int(parsed_configuration["training"]["hidden_layer_size"])
-    parameters["cpu_cores"] = int(parsed_configuration["training"]["cpu_cores"])
-    parameters["batch_size"] = int(parsed_configuration["training"]["batch_size"])
-    parameters["dropout_rate"] = int(parsed_configuration["training"]["batch_size"])
+    parameters["max_iterations"] = int(configuration["training"]["max_iterations"])
+    parameters["patience"] = int(configuration["training"]["patience"])
+    parameters["hidden_layer_size"] = int(configuration["training"]["hidden_layer_size"])
+    parameters["cpu_cores"] = int(configuration["training"]["cpu_cores"])
+    parameters["batch_size"] = int(configuration["training"]["batch_size"])
+    parameters["dropout_rate"] = int(configuration["training"]["batch_size"])
 
     return parameters
 
@@ -36,10 +41,12 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
 
+    # 'Learn' subparser used to learn a new model
     parser_learn = subparsers.add_parser('LEARN', help="Learn model on train data")
     parser_learn.add_argument("--config", help="Configuration file (.ini format)", dest="config", type=str,
                               required=True)
 
+    # 'Apply' subparser used to apply a pretrained model
     parser_test = subparsers.add_parser('APPLY', help="Apply model on test data")
     parser_test.add_argument("--model_path", help="Path to the model", dest="model_path", type=str, required=True)
     parser_test.add_argument("--input_file", help="Path to the tabulated test file", dest="input_file", required=True)
@@ -48,14 +55,30 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Timestamp for directory naming
     timestamp = time.strftime("%Y%m%d-%H%M%S")
 
+    # LOGGING
+    # ===============================================================
+
+    log = logging.getLogger('')
+    log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    # Setting debug level
     if args.debug:
-        logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
-        logging.getLogger('gensim').setLevel(logging.WARNING)
+        log.setLevel(logging.DEBUG)
     else:
-        logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-        logging.getLogger('gensim').setLevel(logging.WARNING)
+        log.setLevel(logging.INFO)
+
+    # Toning down the verbosity of gensim
+    logging.getLogger('gensim').setLevel(logging.WARNING)
+
+    # Adding a stdout handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(log_format)
+    log.addHandler(ch)
+
+    # ===============================================================
 
     if args.subparser_name == "LEARN":
 
@@ -65,38 +88,53 @@ if __name__ == "__main__":
                 os.path.abspath(args.config)
             ))
 
+        # Creating a configparser parser and parsing configuration
         parsed_configuration = configparser.ConfigParser(allow_no_value=False)
         parsed_configuration.read(os.path.abspath(args.config))
 
+        # Checking if the top working dir specified in the configuration exists
         if not os.path.isdir(os.path.abspath(parsed_configuration["data"]["top_working_dir"])):
             raise NotADirectoryError("The top working directory you specified does not exists: {}".format(
                 parsed_configuration["data"]["top_working_dir"]
             ))
 
+        # Creating the current working directory
         current_working_directory = os.path.join(
             os.path.abspath(parsed_configuration["data"]["top_working_dir"]),
             "yaset-learn-{}".format(timestamp)
         )
-
         ensure_dir(current_working_directory)
 
-        train_file_path = parsed_configuration["data"]["train_file_path"]
+        # Setting up a log file and adding a new handler to the logger
+        log_file = os.path.join(current_working_directory, "{}.log".format(
+            "yaset-learn-{}".format(timestamp)
+        ))
+
+        fh = logging.FileHandler(log_file, encoding="UTF-8")
+        fh.setFormatter(log_format)
+        log.addHandler(fh)
+
+        # Setting some variables
+        train_file_path = os.path.abspath(parsed_configuration["data"]["train_file_path"])
         dev_file_path = None
         test_file_path = None
         dev_ratio = None
 
         # EMBEDDING LOADING AND PROCESSING
-        # ==============================================================================================================
-
-        embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
+        # ===========================================================
 
         logging.info("{} BEGIN - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 15))
 
+        embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
+
         if embedding_model_type is not "random":
+            # Case where the model type is not random
 
             logging.info("Model type: {}".format(embedding_model_type))
 
+            # Checking if the embedding model path does exist
             embedding_file_path = os.path.abspath(parsed_configuration["data"]["embedding_model_path"])
+
             if not os.path.isfile(embedding_file_path):
                 raise FileNotFoundError("The embedding file you specified doesn't exist: {}".format(
                     embedding_file_path
@@ -104,36 +142,61 @@ if __name__ == "__main__":
 
             logging.info("File path: {}".format(embedding_file_path))
 
+            # Dynamic loading of embedding module. Allow to write custom modules for specific model formats.
             logging.info("Creating embedding object")
             embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
             embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
             embedding_object = embedding_class(embedding_file_path)
 
+            # Loading embedding matrix into embedding object
             logging.info("Loading matrix")
             embedding_object.load_embedding()
 
+            # Building unknown token vector based on embedding matrix
             logging.info("Building unknown token vector")
             embedding_object.build_unknown_token()
+
+        else:
+            # Random embedding will be supported in a later release
+            raise Exception("Random embeddings are not supported yet")
 
         logging.info("{} END - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 17))
 
         # LOADING AND CHECKING DATA FILES
-        # ==============================================================================================================
+        # ===========================================================
 
+        # If there is a 'dev' file provided, check if the file does exist
         if parsed_configuration.getboolean("data", "use_dev_file"):
             dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
 
+            if not os.path.isfile(dev_file_path):
+                raise FileNotFoundError("The 'dev' file you specified doesn't exist: {}".format(
+                    dev_file_path
+                ))
+
+        # If there is a 'test' file provided, check if the file does exist
         if parsed_configuration.getboolean("data", "use_test_file"):
             test_file_path = os.path.abspath(parsed_configuration["data"]["test_file_path"])
 
+            if not os.path.isfile(test_file_path):
+                raise FileNotFoundError("The 'test' file you specified doesn't exist: {}".format(
+                    test_file_path
+                ))
+
+        # If no 'dev' file is provided, fetch the train/dev ratio and check is it is between 0 and 1
         if not dev_file_path:
             dev_ratio = float(parsed_configuration["data"]["dev_ratio"])
 
+            if dev_ratio <= 0 or dev_ratio >= 1:
+                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(dev_ratio))
+
         logging.info("{} BEGIN - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 19))
 
+        # Creating data object
         data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
                          dev_ratio=dev_ratio)
 
+        # Checking file format
         data.check_input_files()
 
         logging.info("{} END - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
