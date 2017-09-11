@@ -318,7 +318,6 @@ def train_model(working_dir, embedding_object, data_object, train_config):
 
     # Looping until max iteration is reached
     while iteration_number <= train_config["max_iterations"]:
-        # while iteration_number <= 2:
 
         # Resetting the counter if an iteration has been completed
         if train_counter >= train_nb_examples:
@@ -597,7 +596,6 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
         coord.join(item)
 
     sess.close()
-
 
 
 def compute_bucket_boundaries(sequence_lengths, batch_size):
