@@ -18,18 +18,21 @@ def lazy_property(function):
 
 class BiLSTMCRF:
 
-    def __init__(self, batch, reuse=False, **kwargs):
+    def __init__(self, batch, reuse=False, test=False, **kwargs):
+
+        self.reuse = reuse
+        self.test = test
 
         self.x_tokens_len = batch[1]
         self.x_tokens_fw = batch[2]
         self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
-        self.y = batch[3]
 
-        self.reuse = reuse
+        if not test:
+            self.y = batch[3]
 
         self.pl_dropout = kwargs["pl_dropout"]
 
-        if not self.reuse:
+        if not self.reuse and not self.test:
             self.pl_emb = kwargs["pl_emb"]
 
         self.lstm_hidden_size = kwargs["lstm_hidden_size"]
@@ -51,7 +54,7 @@ class BiLSTMCRF:
                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
                                          trainable=True)
 
-            if not self.reuse:
+            if not self.reuse and not self.test:
                 self.embedding_tokens_init = self.W.assign(self.pl_emb)
 
         with tf.device("/cpu:0"):
@@ -64,7 +67,7 @@ class BiLSTMCRF:
 
         self.prediction
 
-        if not self.reuse:
+        if not self.reuse and not self.test:
             self.loss
             self.optimize
 
@@ -117,9 +120,9 @@ class BiLSTMCRF:
 
         with tf.variable_scope('prediction', reuse=self.reuse):
 
-            weight = tf.get_variable('pred_w',
+            weight = tf.get_variable('prediction_weights',
                                      initializer=self._get_weight(2 * self.lstm_hidden_size, self.output_size))
-            bias = tf.get_variable('pred_b',
+            bias = tf.get_variable('prediction_bias',
                                    initializer=self._get_bias(self.output_size))
 
             final_vector = tf.concat([self.forward_representation, self.backward_representation], 2)
@@ -145,9 +148,8 @@ class BiLSTMCRF:
     def optimize(self):
 
         optimizer = tf.train.AdamOptimizer(0.001)
-        gvs = optimizer.compute_gradients(self.loss)
-        # capped_gvs = [(tf.clip_by_value(grad, -5., 5.), var) for grad, var in gvs]
-        return optimizer.apply_gradients(gvs)
+
+        return optimizer.minimize(self.loss)
 
     @staticmethod
     def _get_weight(in_size, out_size):
