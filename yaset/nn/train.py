@@ -1,12 +1,13 @@
+import configparser
+import json
 import logging
 import math
 import os
-import configparser
+import re
 from collections import defaultdict
 
 import numpy as np
 import tensorflow as tf
-import json
 
 from .helpers import TrainLogger
 from .models.lstm import BiLSTMCRF
@@ -130,7 +131,7 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op_shuffle_queue = shuffle_queue.enqueue(tensor_list)
         inputs = shuffle_queue.dequeue()
-        queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 1))
+        queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 4))
 
         # Bucketing according to bucket boundaries passed as arguments
         length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
@@ -179,8 +180,8 @@ def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, 
 
 def _build_test_pipeline(tfrecords_file_path, batch_size=None, nb_instances=None):
     """
-    Build the dev pipeline
-    :param tfrecords_file_path: dev TFRecords file path
+    Build the test pipeline
+    :param tfrecords_file_path: test TFRecords file path
     :return: queue runner list, queues, symbolic link to mini-batch
     """
 
@@ -227,8 +228,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     coord = tf.train.Coordinator()
 
     # Computing bucket boundaries for bucketing
-    logging.debug("-> Computing bucket boundaries for train instances")
     train_bucket_boundaries = compute_bucket_boundaries(data_object.length_train_instances, train_config["batch_size"])
+    logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
 
     # Fetching 'train' and 'dev' instance counts
     train_nb_examples = data_object.nb_train_instances
@@ -239,7 +240,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     tfrecords_dev_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "dev.tfrecords")
 
     # Building 'train' input pipeline sub-graph
-    logging.debug("-> Building train input pipeline")
+    logging.debug("-> Building 'train' input pipeline")
     queue_runner_list_train, queue_list_train,\
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
                                             train_bucket_boundaries,
@@ -248,7 +249,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
                                             nb_instances=train_nb_examples)
 
     # Building 'dev' input pipeline sub-graph
-    logging.debug("-> Building dev input pipeline")
+    logging.debug("-> Building 'dev' input pipeline")
     queue_runner_list_dev, queue_list_dev,\
         batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
                                         num_classes=len(data_object.label_mapping),
@@ -261,18 +262,18 @@ def train_model(working_dir, embedding_object, data_object, train_config):
         "pl_dropout": tf.placeholder(tf.float32),
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),
-        "lstm_hidden_size": 256,
-        "output_size": 3
+        "lstm_hidden_size": train_config["hidden_layer_size"],
+        "output_size": len(data_object.label_mapping)
     }
 
     # Creating main computation sub-graph
-    logging.debug("-> Instantiating NN model (train and dev)")
+    logging.debug("-> Instantiating NN model ('train' and 'dev')")
     with tf.name_scope('train'):
-        model_train = BiLSTMCRF(batch_train, reuse=False, **model_args)
+        model_train = BiLSTMCRF(batch_train, reuse=False, test=False, **model_args)
 
     # Creating dev computation sub-graph, setting reuse to 'true' for weight sharing
     with tf.name_scope('dev'):
-        model_dev = BiLSTMCRF(batch_dev, reuse=True, **model_args)
+        model_dev = BiLSTMCRF(batch_dev, reuse=True, test=False, **model_args)
 
     # Initialization Op
     with tf.device('/cpu:0'):
@@ -286,7 +287,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     saver = tf.train.Saver(max_to_keep=0)
 
     # Creating TensorFlow Session object
-    logging.debug("-> Creating TensorFlow session and initializing graph")
+    logging.debug("-> Creating TensorFlow session and initializing computation graph (variables + embeddings)")
     sess = tf.Session(config=config_tf)
 
     # Initializing variables and embedding matrix
@@ -294,7 +295,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     sess.run(model_train.embedding_tokens_init, {model_args["pl_emb"]: embedding_object.embedding_matrix})
 
     # Launching threads and starting TensorFlow queue runners
-    logging.debug("-> Launching threads")
+    logging.debug("-> Launching threads and TensorFlow queue runners")
     threads_train = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_train]
     threads_dev = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_dev]
 
@@ -307,7 +308,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     display_every_n_dev = math.ceil((dev_nb_examples //
                                      train_config["batch_size"]) * 0.05) * train_config["batch_size"]
 
-    logging.info("Learning !")
+    logging.info("Zajiganié !")
 
     iteration_number = 1
     train_counter = 0
@@ -316,8 +317,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     train_logger_dump_filename = os.path.join(os.path.abspath(working_dir), "train_stats.json")
 
     # Looping until max iteration is reached
-    # while iteration_number <= train_config["max_iterations"]:
-    while iteration_number <= 2:
+    while iteration_number <= train_config["max_iterations"]:
+        # while iteration_number <= 2:
 
         # Resetting the counter if an iteration has been completed
         if train_counter >= train_nb_examples:
@@ -383,12 +384,24 @@ def train_model(working_dir, embedding_object, data_object, train_config):
             accuracy = float(labels_corr) / labels_pred
             logging.info("Accuracy: {}".format(accuracy))
 
-            # Adding iteration score to train logger object
-            train_logger.add_score(iteration_number - 1, accuracy)
             model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
+
+            # Adding iteration score to train logger object
+            train_logger.add_iteration_score(iteration_number - 1, accuracy)
+            train_logger.add_iteration_model_filename(iteration_number - 1, model_name)
+
             logging.info("Model has been saved at: {}".format(model_name))
 
-        # Setting dropout to 0.5 for learning
+            if iteration_number - 1 != 1:
+                logging.info("Cleaning model directory (saving space)")
+                delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
+
+            # Quitting main loop if patience is reached
+            if train_logger.check_patience(train_config["patience"]):
+                logging.info("Patience reached, quitting main loop")
+                break
+
+        # Setting dropout for learning (defined by user)
         params = {
             model_args["pl_dropout"]: train_config["dropout_rate"]
         }
@@ -397,7 +410,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
         _, loss = sess.run([model_train.optimize, model_train.loss], feed_dict=params)
 
         # Incrementing counter and computing completion
-        train_counter += 256
+        train_counter += train_config["batch_size"]
         cur_percentage = (float(train_counter) / train_nb_examples) * 100
 
         # Logging training progress
@@ -408,6 +421,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
                 loss,
                 train_counter
             ))
+
+    logging.info("Iteration scores\n\n{}\n".format(train_logger.get_score_table()))
 
     logging.info("Saving model characteristics")
 
@@ -616,3 +631,13 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
         output_buckets.pop(-1)
 
     return sorted(output_buckets)
+
+
+def delete_models(indices, model_dir):
+
+    regex = re.compile("model.ckpt-({})".format("|".join([str(i) for i in indices])))
+
+    for root, dirs, files in os.walk(os.path.abspath(model_dir)):
+        for filename in files:
+            if regex.match(filename):
+                os.remove(os.path.join(root, filename))
