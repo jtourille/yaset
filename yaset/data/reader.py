@@ -4,6 +4,7 @@ import os
 import re
 from collections import defaultdict
 
+import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
@@ -88,6 +89,9 @@ class TrainData:
         labels = defaultdict(int)
         tokens = defaultdict(int)
 
+        sequence_lengths = list()
+        column_nb = set()
+
         sequence_count = 0
 
         with open(data_file, "r", encoding="UTF-8") as input_file:
@@ -98,25 +102,42 @@ class TrainData:
 
                 if re.match("^$", line):
                     if current_sequence > 0:
-                        current_sequence = 0
-                        sequence_count += 1
+                        sequence_lengths.append(current_sequence)  # Appending current sequence length to list
+                        current_sequence = 0  # Resetting length counter
+                        sequence_count += 1  # Incrementing sequence length
+
                     continue
 
-                parts = line.rstrip("\n").split("\t")
+                parts = line.rstrip("\n").split("\t")  # Splitting line
+
+                column_nb.add(len(parts))  # Keeping track of the number of columns
                 current_sequence += 1
 
-                if len(parts) < 2:
+                # Raising exception if all lines do not have the same number of columns
+                if len(column_nb) > 1 or len(parts) < 2:
                     raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
 
+                # Counting tokens and labels
                 tokens[parts[0]] += 1
                 labels[parts[-1]] += 1
 
+            # End of file, adding information about the last sequence if necessary
             if current_sequence > 0:
                 sequence_count += 1
+                sequence_lengths.append(current_sequence)
 
-        logging.info("* Format: OK")
+        logging.info("* format: OK")
         logging.info("* nb. sequences: {:,}".format(sequence_count))
-        logging.info("* nb. tokens: {:,}".format(sum([v for k, v in tokens.items()])))
+        logging.info("* average length of sequences: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
+            np.mean(sequence_lengths),
+            np.min(sequence_lengths),
+            np.max(sequence_lengths),
+            np.std(sequence_lengths)
+        ))
+        logging.info("* nb. tokens: {:,} (unique={:,})".format(
+            sum([v for k, v in tokens.items()]),
+            len(tokens)
+        ))
         logging.info("* nb. labels: {:,}".format(len(labels)))
         for k, v in labels.items():
             logging.info("-> {}: {:,}".format(k, v))
