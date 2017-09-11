@@ -42,9 +42,22 @@ class TrainLogger:
         :param score: accuracy score
         :return: nothing
         """
-        self.iterations_log[ite] = {
-            "dev_score": score
-        }
+
+        self._create_iteration_item(ite)
+
+        self.iterations_log[ite]["dev_score"] = score
+
+    def add_iteration_model_filename(self, ite, filename):
+        """
+        Add a model filename for a specific iteration
+        :param ite: iteration number
+        :param filename: model filename
+        :return: nothing
+        """
+
+        self._create_iteration_item(ite)
+
+        self.iterations_log[ite]["model_filename"] = os.path.basename(filename)
 
     def save_to_file(self, filename):
         """
@@ -108,3 +121,8 @@ class TrainLogger:
         best_iteration = score_list.index(score_max) + 1
 
         return [i for i in sorted(self.iterations_log) if i != best_iteration]
+
+    def _create_iteration_item(self, ite):
+
+        if ite not in self.iterations_log:
+            self.iterations_log[ite] = dict()
