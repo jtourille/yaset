@@ -310,11 +310,21 @@ class TrainData:
         example.context.feature["x_length"].int64_list.value.append(len(tokens))
 
         x_tokens = example.feature_lists.feature_list["x_tokens"]
+        x_chars = example.feature_lists.feature_list["x_chars"]
         y = example.feature_lists.feature_list["y"]
+
+        token_max_size = 0
 
         for token, label in zip(tokens, labels):
 
             token_id = embedding_object.word_mapping.get(token)
+
+            token_size = 0
+            for char in token:
+                if char in self.char_mapping:
+                    token_size += 1
+            if token_size > token_max_size:
+                token_max_size = token_size
 
             if part == "TRAIN":
                 self.nb_words_train += 1
@@ -334,6 +344,18 @@ class TrainData:
 
             x_tokens.feature.add().int64_list.value.append(token_id)
             y.feature.add().int64_list.value.append(label_id)
+
+        for token in tokens:
+            token_size = 0
+
+            for char in token:
+                if char in self.char_mapping:
+                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
+                    token_size += 1
+
+            while token_size < token_max_size:
+                x_chars.feature.add().int64_list.value.append(0)
+                token_size += 1
 
         writer.write(example.SerializeToString())
 
