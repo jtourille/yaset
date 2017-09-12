@@ -65,6 +65,8 @@ class TrainData:
 
         self.label_mapping = list()
 
+        self.char_mapping = dict()
+
     def check_input_files(self):
         """
         Check input files (train and dev)
@@ -167,12 +169,17 @@ class TrainData:
             self.nb_train_instances = len(train_indexes)
             self.nb_dev_instances = len(dev_indexes)
 
+            logging.info("Building character mapping")
+            self.get_char_mapping(self.train_data_file, train_indexes)
+            logging.debug("* Nb. character: {:,}".format(len(self.char_mapping)))
+
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Train...")
 
             self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
                                        embedding_object, indexes=train_indexes, part="TRAIN")
 
+            logging.info("* Nb. sequences: {:,}".format(self.nb_train_instances))
             logging.info("* Nb. words: {:,}".format(self.nb_words_train))
             logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
                 self.nb_unknown_words_train,
@@ -188,6 +195,7 @@ class TrainData:
             self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
                                        embedding_object, indexes=dev_indexes, part="DEV")
 
+            logging.info("* Nb. sequences: {:,}".format(self.nb_dev_instances))
             logging.info("* Nb. words: {:,}".format(self.nb_words_dev))
             logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
                 self.nb_unknown_words_dev,
@@ -350,6 +358,57 @@ class TrainData:
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
+
+    def get_char_mapping(self, data_file, indexes=None):
+        """
+        Compute the character-mapping file
+        :param data_file: source data files containing the sequences to write to the TFRecords file
+        :param indexes: indexes of the sequences to write to the TFRecords file
+        :return: nothing
+        """
+
+        # Will contains labels and tokens
+        tokens = list()
+
+        sequence_id = 0
+
+        with open(data_file, "r", encoding="UTF-8") as input_file:
+
+            current_tokens = list()
+
+            for line in input_file:
+
+                if re.match("^$", line):
+                    if len(current_tokens) > 0:
+                        if indexes:
+                            if sequence_id in indexes:
+                                tokens = tokens + current_tokens
+                        else:
+                            tokens = tokens + current_tokens
+
+                        current_tokens.clear()
+                        sequence_id += 1
+
+                    continue
+
+                parts = line.rstrip("\n").split("\t")
+
+                tokens.append(parts[0])
+
+            if len(current_tokens) > 0:
+                if indexes:
+                    if sequence_id in indexes:
+                        tokens = tokens + current_tokens
+                else:
+                    tokens = tokens + current_tokens
+
+        char_set = set()
+        for token in tokens:
+            for char in token:
+                char_set.add(char)
+
+        for i, char in enumerate(sorted(char_set)):
+            self.char_mapping[char] = i
 
 
 class TestData:
