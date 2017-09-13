@@ -574,7 +574,7 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
 
     while counter < nb_examples:
 
-        x_id, x_len, y_pred = sess.run([batch[0], batch[1], model.softmax], feed_dict=params)
+        x_id, x_len, y_pred = sess.run([batch[0], batch[1], model.prediction], feed_dict=params)
 
         counter += 64
         cur_percentage = (float(counter) / nb_examples) * 100
