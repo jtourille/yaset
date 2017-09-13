@@ -37,6 +37,8 @@ def read_and_decode(filename_queue, target_size):
         # Sequential TFRecords features
         sequence_features = {
             "x_tokens": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "x_chars": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "x_chars_len": tf.FixedLenSequenceFeature([], dtype=tf.int64),
             "y": tf.FixedLenSequenceFeature([], dtype=tf.int64),
         }
 
@@ -47,11 +49,16 @@ def read_and_decode(filename_queue, target_size):
             sequence_features=sequence_features
         )
 
+        sequence_length = tf.cast(context_parsed["x_length"], tf.int32)
+        chars = tf.reshape(sequence_parsed["x_chars"], tf.stack([sequence_length, -1]))
+
         # Preparing tensor list, casting values to 32 bits when necessary
         tensor_list = [
             context_parsed["x_id"],
             tf.cast(context_parsed["x_length"], tf.int32),
             tf.cast(sequence_parsed["x_tokens"], dtype=tf.int32),
+            tf.cast(chars, dtype=tf.int32),
+            tf.cast(sequence_parsed["x_chars_len"], dtype=tf.int32),
             tf.one_hot(indices=tf.cast(sequence_parsed["y"], dtype=tf.int32), depth=target_size),
         ]
 
@@ -81,6 +88,8 @@ def read_and_decode_test(filename_queue):
         # Sequential TFRecords features
         sequence_features = {
             "x_tokens": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "x_chars": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "x_chars_len": tf.FixedLenSequenceFeature([], dtype=tf.int64),
         }
 
         # Parsing contextual and sequential features
@@ -90,11 +99,16 @@ def read_and_decode_test(filename_queue):
             sequence_features=sequence_features
         )
 
+        sequence_length = tf.cast(context_parsed["x_length"], tf.int32)
+        chars = tf.reshape(sequence_parsed["x_chars"], tf.stack([sequence_length, -1]))
+
         # Preparing tensor list, casting values to 32 bits when necessary
         tensor_list = [
             context_parsed["x_id"],
             tf.cast(context_parsed["x_length"], tf.int32),
             tf.cast(sequence_parsed["x_tokens"], dtype=tf.int32),
+            tf.cast(chars, dtype=tf.int32),
+            tf.cast(sequence_parsed["x_chars_len"], dtype=tf.int32),
         ]
 
         return tensor_list
@@ -126,7 +140,7 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
 
         # Random shuffle queue, allow for randomization of training instances (maximum size: 50% of nb. instances)
         shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=[tf.string, tf.int32, tf.int32,
-                                                                                        tf.float32])
+                                                                                        tf.int32, tf.int32, tf.float32])
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op_shuffle_queue = shuffle_queue.enqueue(tensor_list)
@@ -138,7 +152,8 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
                                                                       sorted(buckets),
                                                                       num_threads=4,
                                                                       capacity=32,
-                                                                      shapes=[[], [], [None], [None, None]],
+                                                                      shapes=[[], [], [None], [None, None], [None],
+                                                                              [None, None]],
                                                                       dynamic_pad=True)
 
         return queue_runner_list, [filename_queue, shuffle_queue], batch
@@ -167,8 +182,9 @@ def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, 
         tensor_list = read_and_decode(filename_queue, num_classes)
 
         # Main queue
-        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.float32],
-                                            shapes=[[], [], [None], [None, None]])
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.int32, tf.int32,
+                                                                  tf.float32],
+                                            shapes=[[], [], [None], [None, None], [None], [None, None]])
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op = padding_queue.enqueue(tensor_list)
@@ -200,8 +216,8 @@ def _build_test_pipeline(tfrecords_file_path, batch_size=None, nb_instances=None
         tensor_list = read_and_decode_test(filename_queue)
 
         # Main queue
-        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32],
-                                            shapes=[[], [], [None]])
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.int32, tf.int32],
+                                            shapes=[[], [], [None], [None, None], [None]])
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op = padding_queue.enqueue(tensor_list)
@@ -259,6 +275,8 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     # Network parameters for **kwargs usage
     model_args = {
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
+        "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
+        "char_lstm_num_hidden": train_config["char_hidden_layer_size"],
         "pl_dropout": tf.placeholder(tf.float32),
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),
@@ -344,7 +362,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
             while dev_counter < dev_nb_examples:
 
                 x_id, x_len, y_pred, y_target = sess.run([batch_dev[0], batch_dev[1], model_dev.prediction,
-                                                          batch_dev[3]], feed_dict=params)
+                                                          batch_dev[5]], feed_dict=params)
 
                 dev_counter += train_config["batch_size"]
                 cur_percentage = (float(dev_counter) / dev_nb_examples) * 100
@@ -436,6 +454,10 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     target_word_mapping_file = os.path.join(working_dir, 'word_mapping.json')
     embedding_object.dump_word_mapping(target_word_mapping_file)
 
+    logging.debug("Dumping char mapping")
+    target_char_mapping_file = os.path.join(working_dir, "char_mapping.json")
+    data_object.dump_char_mapping(target_char_mapping_file)
+
     # Stopping everything gracefully
     logging.info("Stopping everything gracefully (or at least trying to)")
 
@@ -467,9 +489,11 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
     config_tf.intra_op_parallelism_threads = n_jobs
     config_tf.inter_op_parallelism_threads = n_jobs
 
+    # Load config file used during training
     config_train = configparser.ConfigParser(allow_no_value=False)
     config_train.read(os.path.join(model_dir, "config.ini"))
 
+    # Load data characteristics from log file
     train_data_char = json.load(open(os.path.join(model_dir, "data_char.json")))
 
     logging.info("Building computation graph")
@@ -498,6 +522,8 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
         "word_embedding_matrix_shape": train_data_char["embedding_matrix_shape"],
         "pl_dropout": tf.placeholder(tf.float32),
         "lstm_hidden_size": int(config_train["training"]["hidden_layer_size"]),
+        "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
+        "char_lstm_num_hidden": int(config_train["training"]["char_hidden_layer_size"]),
         "output_size": len(train_data_char["label_mapping"])
     }
 
@@ -511,8 +537,8 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
     tf_model_saver_path = os.path.join(model_dir, "tfmodels")
-    # tf_model_saving_name = os.path.join(tf_model_saver_path, "model.ckpt-2")
-    tf_model_saving_name = tf.train.latest_checkpoint(tf_model_saver_path)
+    train_stats_file = os.path.join(model_dir, "train_stats.json")
+    best_filename = os.path.join(tf_model_saver_path, _get_best_model(train_stats_file))
 
     saver = tf.train.Saver()
 
@@ -525,7 +551,7 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
 
     # Restoring model
     logging.info("Loading saved model into TensorFlow session")
-    saver.restore(sess, tf_model_saving_name)
+    saver.restore(sess, best_filename)
 
     # Launching threads and starting TensorFlow queue runners
     logging.debug("-> Launching threads")
@@ -548,7 +574,7 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
 
     while counter < nb_examples:
 
-        x_id, x_len, y_pred = sess.run([batch[0], batch[1], model.prediction], feed_dict=params)
+        x_id, x_len, y_pred = sess.run([batch[0], batch[1], model.softmax], feed_dict=params)
 
         counter += 64
         cur_percentage = (float(counter) / nb_examples) * 100
@@ -633,9 +659,27 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
 
 def delete_models(indices, model_dir):
 
-    regex = re.compile("model.ckpt-({})".format("|".join([str(i) for i in indices])))
+    regex = re.compile("model.ckpt-({})\.".format("|".join([str(i) for i in indices])))
 
     for root, dirs, files in os.walk(os.path.abspath(model_dir)):
         for filename in files:
             if regex.match(filename):
                 os.remove(os.path.join(root, filename))
+
+
+def _get_best_model(train_stats_file):
+
+    train_stats = json.load(open(os.path.abspath(train_stats_file), "r", encoding="UTF-8"))
+
+    best_score = None
+    best_filename = None
+
+    for ite_nb, ite_content in train_stats["iterations"].items():
+        if best_score is None:
+            best_score = ite_content["dev_score"]
+            best_filename = ite_content["model_filename"]
+        elif ite_content["dev_score"] > best_score:
+            best_score = ite_content["dev_score"]
+            best_filename = ite_content["model_filename"]
+
+    return best_filename

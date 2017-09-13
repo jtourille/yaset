@@ -311,6 +311,7 @@ class TrainData:
 
         x_tokens = example.feature_lists.feature_list["x_tokens"]
         x_chars = example.feature_lists.feature_list["x_chars"]
+        x_chars_len = example.feature_lists.feature_list["x_chars_len"]
         y = example.feature_lists.feature_list["y"]
 
         token_max_size = 0
@@ -352,6 +353,7 @@ class TrainData:
                 if char in self.char_mapping:
                     x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
                     token_size += 1
+            x_chars_len.feature.add().int64_list.value.append(token_size)
 
             while token_size < token_max_size:
                 x_chars.feature.add().int64_list.value.append(0)
@@ -432,6 +434,10 @@ class TrainData:
         for i, char in enumerate(sorted(char_set)):
             self.char_mapping[char] = i
 
+    def dump_char_mapping(self, target_file):
+
+        json.dump(self.char_mapping, open(target_file, "w", encoding="UTF-8"))
+
 
 class TestData:
 
@@ -448,14 +454,28 @@ class TestData:
         data_characteristics_file = os.path.join(os.path.abspath(train_model_path), "data_char.json")
         self.data_char = json.load(open(data_characteristics_file, "r", encoding="UTF-8"))
 
-        self.label_mapping = self.data_char["label_mapping"]
+        logging.info("Loading char mapping file")
+        char_mapping_file = os.path.join(os.path.abspath(train_model_path), "char_mapping.json")
+        self.char_mapping = json.load(open(char_mapping_file, "r", encoding="UTF-8"))
 
         self.unknown_word_file = os.path.join(working_dir, "unk_words.lst")
 
+        # Fetching label mapping from training data characteristics
+        self.label_mapping = self.data_char["label_mapping"]
+
+        # Number of instance in the test set
         self.nb_instances = 0
+
+        # Length of sequences in the test set
         self.length_instances = list()
-        self.nb_words = 0
+
+        # Number of words in the test set
+        self.tokens = defaultdict(int)
+
+        # Number of unknown words in the test set
         self.nb_unknown_words = 0
+
+        # Set of unknown words in the test set
         self.unknown_words_set = set()
 
     def check_input_file(self):
@@ -468,49 +488,57 @@ class TestData:
             logging.info("Checking file")
             self._check_file(self.test_data_file)
 
-    @staticmethod
-    def _check_file(data_file):
+    def _check_file(self, data_file):
         """
         Check one input data file
         :param data_file: data file to check
         :return: nothing
         """
 
-        tokens = defaultdict(int)
-        columns = set()
-
-        sequence_count = 0
+        column_nb = set()
 
         with open(data_file, "r", encoding="UTF-8") as input_file:
-
+            # Sequence length counter
             current_sequence = 0
 
             for i, line in enumerate(input_file, start=1):
-
                 if re.match("^$", line):
                     if current_sequence > 0:
+                        # Appending the current sequence length and resetting counter
+                        self.length_instances.append(current_sequence)
                         current_sequence = 0
-                        sequence_count += 1
                     continue
 
+                # Splitting line
                 parts = line.rstrip("\n").split("\t")
                 current_sequence += 1
-                columns.add(len(parts))
 
+                # Appending column count for integrity check
+                column_nb.add(len(parts))
+
+                # Throwing exception if the number of columns is less than one
                 if len(parts) < 1:
                     raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
 
-                tokens[parts[0]] += 1
+                # Keeping statistics on token counts
+                self.tokens[parts[0]] += 1
 
             if current_sequence > 0:
-                sequence_count += 1
+                # Appending the current sequence length
+                self.length_instances.append(current_sequence)
 
-        if len(columns) > 1:
+        if len(column_nb) > 1:
             raise Exception("Error in the file, there is not the same number of columns")
 
-        logging.info("* Format: OK")
-        logging.info("* nb. sequences: {:,}".format(sequence_count))
-        logging.info("* nb. tokens: {:,}".format(sum([v for k, v in tokens.items()])))
+        logging.info("* format: OK")
+        logging.info("* nb. sequences: {:,}".format(len(self.length_instances)))
+        logging.info("* average length of sequences: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
+            np.mean(self.length_instances),
+            np.min(self.length_instances),
+            np.max(self.length_instances),
+            np.std(self.length_instances)
+        ))
+        logging.info("* nb. tokens: {:,}".format(sum([v for k, v in self.tokens.items()])))
 
     def convert_to_tfrecords(self, data_file, target_tfrecords_file_path):
         """
@@ -523,43 +551,46 @@ class TestData:
         logging.info("Creating TFRecords file")
 
         tokens = list()
+        nb_words = 0
+        sequence_length = list()
 
+        # Unique sequence id used to write prediction to file
         sequence_id = 0
 
+        # TFRecord writer
         writer = tf.python_io.TFRecordWriter(target_tfrecords_file_path)
 
         with open(data_file, "r", encoding="UTF-8") as input_file:
 
-            current_sequence = 0
-
             for line in input_file:
 
                 if re.match("^$", line):
-                    if current_sequence > 0:
-                        current_sequence = 0
-
+                    if len(tokens) > 0:
                         self._write_example_to_file(writer, tokens, "{}-{}".format("TEST", sequence_id))
-
-                        tokens.clear()
+                        nb_words += len(tokens)
+                        sequence_length.append(len(tokens))
                         sequence_id += 1
+                        tokens.clear()
 
                     continue
 
                 parts = line.rstrip("\n").split("\t")
-                current_sequence += 1
-
                 tokens.append(parts[0])
 
-            if current_sequence > 0:
+            # End of file, dumping current sequence
+            if len(tokens) > 0:
                 self._write_example_to_file(writer, tokens, "{}-{}".format("TEST", sequence_id))
+                nb_words += len(tokens)
+                sequence_length.append(len(tokens))
+                sequence_id += 1
 
         writer.close()
 
         logging.info("* Nb. sequences: {:,}".format(sequence_id))
-        logging.info("* Nb. words: {:,}".format(self.nb_words))
+        logging.info("* Nb. words: {:,}".format(nb_words))
         logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
             self.nb_unknown_words,
-            (self.nb_unknown_words / self.nb_words) * 100
+            (self.nb_unknown_words / sum([v for k, v in self.tokens.items()])) * 100
         ))
         logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set)))
         logging.info("Dumping unknown word list to file")
@@ -570,13 +601,10 @@ class TestData:
         Write an example to a TFRecords file
         :param writer: opened TFRecordWriter
         :param tokens: list of tokens
-        :param labels: list of token labels
-        :param embedding_object: yaset embedding object
         :return: nothing
         """
 
         self.nb_instances += 1
-        self.length_instances.append(len(tokens))
 
         example = tf.train.SequenceExample()
 
@@ -586,19 +614,42 @@ class TestData:
         example.context.feature["x_length"].int64_list.value.append(len(tokens))
 
         x_tokens = example.feature_lists.feature_list["x_tokens"]
+        x_chars = example.feature_lists.feature_list["x_chars"]
+        x_chars_len = example.feature_lists.feature_list["x_chars_len"]
+
+        token_max_size = 0
 
         for token in tokens:
 
             token_id = self.word_mapping.get(token)
-
-            self.nb_words += 1
 
             if not token_id:
                 token_id = self.word_mapping.get("##UNK##")
                 self.nb_unknown_words += 1
                 self.unknown_words_set.add(token)
 
+            token_size = 0
+            for char in token:
+                if char in self.char_mapping:
+                    token_size += 1
+
+            if token_size > token_max_size:
+                token_max_size = token_size
+
             x_tokens.feature.add().int64_list.value.append(token_id)
+
+        for token in tokens:
+            token_size = 0
+
+            for char in token:
+                if char in self.char_mapping:
+                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
+                    token_size += 1
+            x_chars_len.feature.add().int64_list.value.append(token_size)
+
+            while token_size < token_max_size:
+                x_chars.feature.add().int64_list.value.append(0)
+                token_size += 1
 
         writer.write(example.SerializeToString())
 
