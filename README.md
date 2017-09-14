@@ -1,32 +1,31 @@
 # Yet Another SEquence Tagger
 
-YASET is sequence tagger written in Python. For now, one model is implemented by several state-of-the-art models
- will be implemented in the near future.
+YASET is sequence tagger written in [Python](https://www.python.org/).
 The main objective of this tool is to be usable as an off-the-shelf tool for various sequence tagging tasks 
 (e.g. Named Entity Recognition or Part-of-Speech tagging).
 
-## Installation
+## 1. Installation
 
-0. You need a working Python 3.6+ environment.
+Step 0. You need a **working Python 3.6+ environment**.
 
-1. Clone the repository
-```text
+Step 1. **Clone the repository**
+```bash
 git clone git@github.com:jtourille/yaset.git
 ```
 
-2. Move to the newly created directory
-```text
+Step 2. **Move** into the newly created directory
+```bash
 cd yaset
 ```
 
-3. Install the tool into your python environment
+Step 3. **Install the tool** into your python environment
 ```text
 pip install .
 ```
 
-## Input Data
+## 2. Input Data
 
-Data must be formatted in a tabular fashion with:
+Data must be formatted in a **tabular** fashion with:
 * One token per line
 * Sequence separated by blank lines
 
@@ -58,7 +57,7 @@ China   O
 
 ```
 
-## How to use
+## 3. How to use
 
 The tool has two modes: TRAIN and APPLY.
 
