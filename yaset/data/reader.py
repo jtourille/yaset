@@ -207,6 +207,44 @@ class TrainData:
             logging.info("* Dumping unknown word list to file")
             self._dump_unknown_word_set(self.unknown_words_set_dev, self.unknown_word_file_dev)
 
+        else:
+
+            self.nb_train_instances = self._get_number_sequences(self.train_data_file)
+            self.nb_dev_instances = self._get_number_sequences(self.dev_data_file)
+
+            logging.info("Building character mapping")
+            self.get_char_mapping(self.train_data_file)
+            logging.debug("* Nb. character: {:,}".format(len(self.char_mapping)))
+
+            logging.info("Train...")
+
+            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
+                                       embedding_object, part="TRAIN")
+
+            logging.info("* Nb. sequences: {:,}".format(self.nb_train_instances))
+            logging.info("* Nb. words: {:,}".format(self.nb_words_train))
+            logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
+                self.nb_unknown_words_train,
+                (self.nb_unknown_words_train / self.nb_words_train) * 100
+            ))
+            logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_train)))
+
+            logging.info("Dev...")
+            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
+                                       embedding_object, part="DEV")
+
+            logging.info("* Nb. sequences: {:,}".format(self.nb_dev_instances))
+            logging.info("* Nb. words: {:,}".format(self.nb_words_dev))
+            logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
+                self.nb_unknown_words_dev,
+                (self.nb_unknown_words_dev / self.nb_words_dev) * 100
+            ))
+            logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set_dev)))
+
+            # Dumping unknown word set to working dir
+            logging.info("* Dumping unknown word list to file")
+            self._dump_unknown_word_set(self.unknown_words_set_dev, self.unknown_word_file_dev)
+
     @staticmethod
     def _get_number_sequences(data_file_path):
         """
@@ -264,7 +302,11 @@ class TrainData:
                     if current_sequence > 0:
                         current_sequence = 0
 
-                        if sequence_id in indexes:
+                        if indexes:
+                            if sequence_id in indexes:
+                                self._write_example_to_file(writer, tokens, labels, embedding_object,
+                                                            "{}-{}".format(part, sequence_id), part)
+                        else:
                             self._write_example_to_file(writer, tokens, labels, embedding_object,
                                                         "{}-{}".format(part, sequence_id), part)
 
@@ -281,7 +323,11 @@ class TrainData:
                 labels.append(parts[-1])
 
             if current_sequence > 0:
-                if sequence_id in indexes:
+                if indexes:
+                    if sequence_id in indexes:
+                        self._write_example_to_file(writer, tokens, labels, embedding_object,
+                                                    "{}-{}".format(part, sequence_id), part)
+                else:
                     self._write_example_to_file(writer, tokens, labels, embedding_object,
                                                 "{}-{}".format(part, sequence_id), part)
 
