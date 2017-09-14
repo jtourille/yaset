@@ -19,7 +19,7 @@ cd yaset
 ```
 
 Step 3. **Install the tool** into your python environment
-```text
+```bash
 pip install .
 ```
 
