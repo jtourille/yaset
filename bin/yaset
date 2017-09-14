@@ -61,6 +61,7 @@ if __name__ == "__main__":
 
     # LOGGING
     # ===============================================================
+    # Logging to stdout
 
     log = logging.getLogger('')
     log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -71,7 +72,7 @@ if __name__ == "__main__":
     else:
         log.setLevel(logging.INFO)
 
-    # Toning down the verbosity of gensim
+    # Toning down the verbosity of gensim (in both NORMAL and DEBUG modes)
     logging.getLogger('gensim').setLevel(logging.WARNING)
 
     # Adding a stdout handler
@@ -85,7 +86,7 @@ if __name__ == "__main__":
 
         # Check if config file does exist
         if not os.path.isfile(os.path.abspath(args.config)):
-            raise FileNotFoundError("The configuration file you specified doesn't exist: {}".format(
+            raise FileNotFoundError("The configuration file you specified does not exist: {}".format(
                 os.path.abspath(args.config)
             ))
 
@@ -95,11 +96,11 @@ if __name__ == "__main__":
 
         # Checking if the top working dir specified in the configuration exists
         if not os.path.isdir(os.path.abspath(parsed_configuration["data"]["top_working_dir"])):
-            raise NotADirectoryError("The top working directory you specified does not exists: {}".format(
-                parsed_configuration["data"]["top_working_dir"]
+            raise NotADirectoryError("The top working directory you specified does not exist: {}".format(
+                os.path.abspath(parsed_configuration["data"]["top_working_dir"])
             ))
 
-        # Creating the current working directory
+        # Creating the current working directory based on the top working directory
         current_working_directory = os.path.join(
             os.path.abspath(parsed_configuration["data"]["top_working_dir"]),
             "yaset-learn-{}".format(timestamp)
@@ -205,7 +206,8 @@ if __name__ == "__main__":
 
         logging.info("{} BEGIN - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 26))
 
-        if parsed_configuration.getboolean("data", "dev_use_random_seed"):
+        if parsed_configuration.getboolean("data", "dev_use_random_seed") and \
+                parsed_configuration.getboolean("data", "use_dev_file"):
             dev_random_seed = parsed_configuration.getint("data", "dev_random_seed")
 
         data.create_tfrecords_files(embedding_object, random_seed=dev_random_seed)
