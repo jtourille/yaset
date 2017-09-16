@@ -4,8 +4,8 @@ import logging
 import math
 import os
 import re
-from collections import defaultdict
 
+import joblib
 import numpy as np
 import tensorflow as tf
 
@@ -387,7 +387,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
                         target_id = np.argmax(label_gs)
 
                         labels_pred += 1
-                        if data_object.label_mapping[target_id] == data_object.label_mapping[label_pred]:
+                        if target_id == label_pred:
                             labels_corr += 1
 
                 # Logging progress
@@ -449,14 +449,6 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     logging.debug("* Dumping data characteristics")
     target_data_characteristics_file = os.path.join(working_dir, 'data_char.json')
     data_object.dump_data_characteristics(target_data_characteristics_file, embedding_object)
-
-    logging.debug("* Dumping word mapping")
-    target_word_mapping_file = os.path.join(working_dir, 'word_mapping.json')
-    embedding_object.dump_word_mapping(target_word_mapping_file)
-
-    logging.debug("Dumping char mapping")
-    target_char_mapping_file = os.path.join(working_dir, "char_mapping.json")
-    data_object.dump_char_mapping(target_char_mapping_file)
 
     # Stopping everything gracefully
     logging.info("Stopping everything gracefully (or at least trying to)")
@@ -632,29 +624,42 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
     :return: buckets boundaries (list)
     """
 
-    # Step 1 - Gather number of sequences per length
-    seq_count_by_length = defaultdict(int)
+    nb_sequences = len(sequence_lengths)
 
-    for length in sequence_lengths:
-        seq_count_by_length[length] += 1
+    start = 0
+    end = 10
+    done = 0
+    final_buckets = list()
 
-    # Step 2 - Compute bucket boundaries
-    # Each buckets must contains at least four mini-batches
-    output_buckets = list()
-    current_count = 0
+    while done < nb_sequences:
 
-    for len_seq, nb_seq in sorted(seq_count_by_length.items(), reverse=True):
+        if nb_sequences - done < batch_size * 4:
+            break
 
-        current_count += nb_seq
+        print(start, end, done)
+        current_bucket = 0
 
-        if current_count >= batch_size * 4:
-            output_buckets.append(len_seq)
-            current_count = 0
+        for length in sequence_lengths:
+            if start < length <= end:
+                current_bucket += 1
 
-    if current_count < batch_size * 3 and current_count != 0:
-        output_buckets.pop(-1)
+        if current_bucket >= batch_size * 4:
+            if start > 0:
+                final_buckets.append(start)
+            if end > 0:
+                final_buckets.append(end)
 
-    return sorted(output_buckets)
+            done += current_bucket
+            start += 10
+            end += 10
+        else:
+            end += 10
+
+        final_buckets = sorted(list(set(final_buckets)))
+
+    _ = final_buckets.pop(-1)
+
+    return sorted(final_buckets)
 
 
 def delete_models(indices, model_dir):
