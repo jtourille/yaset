@@ -63,7 +63,8 @@ class TrainData:
         self.nb_words_train = 0
         self.nb_words_dev = 0
 
-        self.label_mapping = list()
+        self.label_mapping = dict()
+        self.inverse_label_mapping = dict()
 
         self.char_mapping = dict()
 
@@ -141,9 +142,13 @@ class TrainData:
             len(tokens)
         ))
         logging.info("* nb. labels: {:,}".format(len(labels)))
+
         for k, v in labels.items():
             logging.info("-> {}: {:,}".format(k, v))
-            self.label_mapping.append(k)
+
+        for i, k in enumerate(labels):
+            self.label_mapping[k] = i
+            self.inverse_label_mapping[i] = k
 
     def create_tfrecords_files(self, embedding_object, random_seed=None):
         """
@@ -387,7 +392,7 @@ class TrainData:
                     self.nb_unknown_words_dev += 1
                     self.unknown_words_set_dev.add(token)
 
-            label_id = self.label_mapping.index(label)
+            label_id = self.label_mapping.get(label)
 
             x_tokens.feature.add().int64_list.value.append(token_id)
             y.feature.add().int64_list.value.append(label_id)
@@ -424,7 +429,9 @@ class TrainData:
 
         payload = {
             "label_mapping": self.label_mapping,
-            "embedding_matrix_shape": embedding_object.embedding_matrix.shape
+            "embedding_matrix_shape": embedding_object.embedding_matrix.shape,
+            "word_mapping": embedding_object.word_mapping,
+            "char_mapping": self.char_mapping
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
@@ -480,9 +487,9 @@ class TrainData:
         for i, char in enumerate(sorted(char_set)):
             self.char_mapping[char] = i
 
-    def dump_char_mapping(self, target_file):
-
-        json.dump(self.char_mapping, open(target_file, "w", encoding="UTF-8"))
+    # def dump_char_mapping(self, target_file):
+    #
+    #     json.dump(self.char_mapping, open(target_file, "w", encoding="UTF-8"))
 
 
 class TestData:
@@ -492,17 +499,12 @@ class TestData:
         self.test_data_file = test_data_file
         self.working_dir = working_dir
 
-        logging.info("Loading word mapping file")
-        word_mapping_file = os.path.join(os.path.abspath(train_model_path), "word_mapping.json")
-        self.word_mapping = json.load(open(word_mapping_file, "r", encoding="UTF-8"))
-
         logging.info("Loading data characteristics file")
         data_characteristics_file = os.path.join(os.path.abspath(train_model_path), "data_char.json")
         self.data_char = json.load(open(data_characteristics_file, "r", encoding="UTF-8"))
 
-        logging.info("Loading char mapping file")
-        char_mapping_file = os.path.join(os.path.abspath(train_model_path), "char_mapping.json")
-        self.char_mapping = json.load(open(char_mapping_file, "r", encoding="UTF-8"))
+        self.word_mapping = self.data_char["word_mapping"]
+        self.char_mapping = self.data_char["char_mapping"]
 
         self.unknown_word_file = os.path.join(working_dir, "unk_words.lst")
 
@@ -701,6 +703,11 @@ class TestData:
 
     def write_predictions_to_file(self, target_file, pred_sequences):
 
+        inverse_label_mapping = dict()
+
+        for k, v in self.label_mapping.items():
+            inverse_label_mapping[v] = k
+
         with open(self.test_data_file, "r", encoding="UTF-8") as input_file:
             with open(os.path.abspath(target_file), "w", encoding="UTF-8") as output_file:
 
@@ -715,7 +722,7 @@ class TestData:
                             for token, pred in zip(sequence_parts, cur_pred_seq):
 
                                 output_file.write('{}\n'.format(
-                                    "\t".join(token + [self.label_mapping[pred]])
+                                    "\t".join(token + [inverse_label_mapping[pred]])
                                 ))
 
                             sequence_id += 1
@@ -732,7 +739,7 @@ class TestData:
 
                     for token, pred in zip(sequence_parts, cur_pred_seq):
                         output_file.write('{}\n'.format(
-                            "\t".join(token + [self.label_mapping[pred]])
+                            "\t".join(token + [inverse_label_mapping[pred]])
                         ))
 
     @staticmethod
