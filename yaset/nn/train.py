@@ -5,16 +5,16 @@ import math
 import os
 import re
 
-import joblib
 import numpy as np
 import tensorflow as tf
 
 from .helpers import TrainLogger
 from .models.lstm import BiLSTMCRF
 from ..tools import ensure_dir
+from ..data.reader import TrainData, TestData
 
 
-def read_and_decode(filename_queue, target_size):
+def read_and_decode(filename_queue, target_size, feature_columns):
     """
     Read and decode one example from a TFRecords file
     :param filename_queue: filename queue containing the TFRecords filenames
@@ -42,6 +42,9 @@ def read_and_decode(filename_queue, target_size):
             "y": tf.FixedLenSequenceFeature([], dtype=tf.int64),
         }
 
+        for col in feature_columns:
+            sequence_features["x_att_{}".format(col)] = tf.FixedLenSequenceFeature([], dtype=tf.int64)
+
         # Parsing contextual and sequential features
         context_parsed, sequence_parsed = tf.parse_single_sequence_example(
             serialized=serialized_example,
@@ -62,10 +65,13 @@ def read_and_decode(filename_queue, target_size):
             tf.one_hot(indices=tf.cast(sequence_parsed["y"], dtype=tf.int32), depth=target_size),
         ]
 
+        for col in feature_columns:
+            tensor_list.append(tf.cast(sequence_parsed["x_att_{}".format(col)], dtype=tf.int32))
+
         return tensor_list
 
 
-def read_and_decode_test(filename_queue):
+def read_and_decode_test(filename_queue, feature_columns):
     """
     Read and decode one example from a TFRecords file
     :param filename_queue: filename queue containing the TFRecords filenames
@@ -92,6 +98,9 @@ def read_and_decode_test(filename_queue):
             "x_chars_len": tf.FixedLenSequenceFeature([], dtype=tf.int64),
         }
 
+        for col in feature_columns:
+            sequence_features["x_att_{}".format(col)] = tf.FixedLenSequenceFeature([], dtype=tf.int64)
+
         # Parsing contextual and sequential features
         context_parsed, sequence_parsed = tf.parse_single_sequence_example(
             serialized=serialized_example,
@@ -111,10 +120,14 @@ def read_and_decode_test(filename_queue):
             tf.cast(sequence_parsed["x_chars_len"], dtype=tf.int32),
         ]
 
+        for col in feature_columns:
+            tensor_list.append(tf.cast(sequence_parsed["x_att_{}".format(col)], dtype=tf.int32))
+
         return tensor_list
 
 
-def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_size=None, nb_instances=None):
+def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, num_classes=None, batch_size=None,
+                          nb_instances=None):
     """
     Build the train pipeline. Sequences are grouped into buckets for faster training.
     :param tfrecords_file_path: train TFRecords file path
@@ -136,30 +149,36 @@ def _build_train_pipeline(tfrecords_file_path, buckets, num_classes=None, batch_
         filename_queue = tf.train.string_input_producer(tfrecords_list)
 
         # Decode one example
-        tensor_list = read_and_decode(filename_queue, num_classes)
+        tensor_list = read_and_decode(filename_queue, num_classes, feature_columns)
+
+        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32]
+        for _ in feature_columns:
+            dtypes.append(tf.int32)
 
         # Random shuffle queue, allow for randomization of training instances (maximum size: 50% of nb. instances)
-        shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=[tf.string, tf.int32, tf.int32,
-                                                                                        tf.int32, tf.int32, tf.float32])
+        shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=dtypes)
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op_shuffle_queue = shuffle_queue.enqueue(tensor_list)
         inputs = shuffle_queue.dequeue()
         queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 4))
 
+        shapes = [[], [], [None], [None, None], [None], [None, None]]
+        for _ in feature_columns:
+            shapes.append([None])
+
         # Bucketing according to bucket boundaries passed as arguments
         length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
                                                                       sorted(buckets),
                                                                       num_threads=4,
                                                                       capacity=32,
-                                                                      shapes=[[], [], [None], [None, None], [None],
-                                                                              [None, None]],
+                                                                      shapes=shapes,
                                                                       dynamic_pad=True)
 
         return queue_runner_list, [filename_queue, shuffle_queue], batch
 
 
-def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, nb_instances=None):
+def _build_dev_pipeline(tfrecords_file_path, feature_columns, num_classes=None, batch_size=None, nb_instances=None):
     """
     Build the dev pipeline
     :param tfrecords_file_path: dev TFRecords file path
@@ -179,12 +198,17 @@ def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, 
         filename_queue = tf.train.string_input_producer(tfrecords_list)
 
         # Decode one example
-        tensor_list = read_and_decode(filename_queue, num_classes)
+        tensor_list = read_and_decode(filename_queue, num_classes, feature_columns)
+
+        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32]
+        shapes = [[], [], [None], [None, None], [None], [None, None]]
+
+        for _ in feature_columns:
+            dtypes.append(tf.int32)
+            shapes.append([None])
 
         # Main queue
-        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.int32, tf.int32,
-                                                                  tf.float32],
-                                            shapes=[[], [], [None], [None, None], [None], [None, None]])
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=dtypes, shapes=shapes)
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op = padding_queue.enqueue(tensor_list)
@@ -194,7 +218,7 @@ def _build_dev_pipeline(tfrecords_file_path, num_classes=None, batch_size=None, 
         return queue_runner_list, [filename_queue, padding_queue], batch
 
 
-def _build_test_pipeline(tfrecords_file_path, batch_size=None, nb_instances=None):
+def _build_test_pipeline(tfrecords_file_path, feature_columns, batch_size=None, nb_instances=None):
     """
     Build the test pipeline
     :param tfrecords_file_path: test TFRecords file path
@@ -213,11 +237,17 @@ def _build_test_pipeline(tfrecords_file_path, batch_size=None, nb_instances=None
         filename_queue = tf.train.string_input_producer(tfrecords_list)
 
         # Decode one example
-        tensor_list = read_and_decode_test(filename_queue)
+        tensor_list = read_and_decode_test(filename_queue, feature_columns)
+
+        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32]
+        shapes = [[], [], [None], [None, None], [None]]
+
+        for _ in feature_columns:
+            dtypes.append(tf.int32)
+            shapes.append([None])
 
         # Main queue
-        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=[tf.string, tf.int32, tf.int32, tf.int32, tf.int32],
-                                            shapes=[[], [], [None], [None, None], [None]])
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=dtypes, shapes=shapes)
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op = padding_queue.enqueue(tensor_list)
@@ -227,7 +257,7 @@ def _build_test_pipeline(tfrecords_file_path, batch_size=None, nb_instances=None
         return queue_runner_list, [filename_queue, padding_queue], batch
 
 
-def train_model(working_dir, embedding_object, data_object, train_config):
+def train_model(working_dir, embedding_object, data_object: TrainData, train_config):
 
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = train_config["cpu_cores"]
@@ -244,12 +274,14 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     coord = tf.train.Coordinator()
 
     # Computing bucket boundaries for bucketing
-    train_bucket_boundaries = compute_bucket_boundaries(data_object.length_train_instances, train_config["batch_size"])
+    logging.info(len(data_object.train_stats.sequence_lengths))
+    train_bucket_boundaries = compute_bucket_boundaries(
+        data_object.train_stats.sequence_lengths, train_config["batch_size"])
     logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
 
     # Fetching 'train' and 'dev' instance counts
-    train_nb_examples = data_object.nb_train_instances
-    dev_nb_examples = data_object.nb_dev_instances
+    train_nb_examples = data_object.train_stats.nb_instances
+    dev_nb_examples = data_object.dev_stats.nb_instances
 
     # Computing TFRecords file paths
     tfrecords_train_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "train.tfrecords")
@@ -260,6 +292,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     queue_runner_list_train, queue_list_train,\
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
                                             train_bucket_boundaries,
+                                            data_object.feature_columns,
                                             num_classes=len(data_object.label_mapping),
                                             batch_size=train_config["batch_size"],
                                             nb_instances=train_nb_examples)
@@ -268,6 +301,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     logging.debug("-> Building 'dev' input pipeline")
     queue_runner_list_dev, queue_list_dev,\
         batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
+                                        data_object.feature_columns,
                                         num_classes=len(data_object.label_mapping),
                                         batch_size=train_config["batch_size"],
                                         nb_instances=dev_nb_examples)
@@ -475,7 +509,7 @@ def train_model(working_dir, embedding_object, data_object, train_config):
     sess.close()
 
 
-def apply_model(working_dir, model_dir, data_object, n_jobs=1):
+def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
 
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = n_jobs
@@ -498,7 +532,8 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
     logging.debug("-> Creating coordinator")
     coord = tf.train.Coordinator()
 
-    nb_examples = data_object.nb_instances
+    nb_examples = data_object.test_stats.nb_instances
+    logging.info(nb_examples)
 
     tfrecords_file_path = os.path.join(os.path.abspath(working_dir), "data.tfrecords")
 
@@ -506,6 +541,7 @@ def apply_model(working_dir, model_dir, data_object, n_jobs=1):
     logging.debug("-> Building input pipeline")
     queue_runner_list, queue_list, \
         batch = _build_test_pipeline(tfrecords_file_path,
+                                     data_object.feature_columns,
                                      batch_size=64,
                                      nb_instances=nb_examples)
 
@@ -629,15 +665,15 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
     start = 0
     end = 10
     done = 0
+
     final_buckets = list()
+
+    current_bucket = 0
 
     while done < nb_sequences:
 
         if nb_sequences - done < batch_size * 4:
             break
-
-        print(start, end, done)
-        current_bucket = 0
 
         for length in sequence_lengths:
             if start < length <= end:
@@ -649,9 +685,13 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
             if end > 0:
                 final_buckets.append(end)
 
+            logging.debug("* start={} -> end={} | {} instances".format(start, end, current_bucket))
+
             done += current_bucket
             start += 10
             end += 10
+
+            current_bucket = 0
         else:
             end += 10
 
