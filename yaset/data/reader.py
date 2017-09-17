@@ -371,7 +371,10 @@ class TrainData:
             "label_mapping": self.label_mapping,
             "embedding_matrix_shape": embedding_object.embedding_matrix.shape,
             "word_mapping": embedding_object.word_mapping,
-            "char_mapping": self.char_mapping
+            "char_mapping": self.char_mapping,
+            "feature_value_mapping": self.feature_value_mapping,
+            "feature_nb": self.feature_nb,
+            "feature_columns": self.feature_columns
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
@@ -742,26 +745,17 @@ class TestData:
 
         self.word_mapping = self.data_char["word_mapping"]
         self.char_mapping = self.data_char["char_mapping"]
+        self.feature_value_mapping = dict()
+        for k, v in self.data_char["feature_value_mapping"].items():
+            self.feature_value_mapping[int(k)] = v
 
-        self.unknown_word_file = os.path.join(working_dir, "unk_words.lst")
+        self.feature_nb = self.data_char["feature_nb"]
+        self.feature_columns = self.data_char["feature_columns"]
 
         # Fetching label mapping from training data characteristics
         self.label_mapping = self.data_char["label_mapping"]
 
-        # Number of instance in the test set
-        self.nb_instances = 0
-
-        # Length of sequences in the test set
-        self.length_instances = list()
-
-        # Number of words in the test set
-        self.tokens = defaultdict(int)
-
-        # Number of unknown words in the test set
-        self.nb_unknown_words = 0
-
-        # Set of unknown words in the test set
-        self.unknown_words_set = set()
+        self.test_stats = StatsCorpus(name="TEST")
 
     def check_input_file(self):
         """
@@ -771,59 +765,89 @@ class TestData:
 
         if self.test_data_file:
             logging.info("Checking file")
-            self._check_file(self.test_data_file)
+            self._check_file(self.test_data_file, self.feature_columns)
 
-    def _check_file(self, data_file):
+    @staticmethod
+    def _check_file(data_file, feature_columns):
         """
-        Check one input data file
+        Check input data file format
         :param data_file: data file to check
         :return: nothing
         """
 
+        labels = defaultdict(int)
+        tokens = defaultdict(int)
+
+        attributes = dict()
+        for col in feature_columns:
+            attributes[col] = defaultdict(int)
+
+        sequence_lengths = list()
         column_nb = set()
 
+        sequence_count = 0
+
         with open(data_file, "r", encoding="UTF-8") as input_file:
-            # Sequence length counter
+
             current_sequence = 0
 
             for i, line in enumerate(input_file, start=1):
                 if re.match("^$", line):
                     if current_sequence > 0:
-                        # Appending the current sequence length and resetting counter
-                        self.length_instances.append(current_sequence)
-                        current_sequence = 0
+                        sequence_lengths.append(current_sequence)  # Appending current sequence length to list
+                        current_sequence = 0  # Resetting length counter
+                        sequence_count += 1  # Incrementing sequence length
+
                     continue
 
-                # Splitting line
-                parts = line.rstrip("\n").split("\t")
+                parts = line.rstrip("\n").split("\t")  # Splitting line
+
+                column_nb.add(len(parts))  # Keeping track of the number of columns
                 current_sequence += 1
 
-                # Appending column count for integrity check
-                column_nb.add(len(parts))
-
-                # Throwing exception if the number of columns is less than one
-                if len(parts) < 1:
+                # Raising exception if all lines do not have the same number of columns or
+                # if the number of columns is < 2
+                if len(column_nb) > 1 or len(parts) < 2:
                     raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
 
-                # Keeping statistics on token counts
-                self.tokens[parts[0]] += 1
+                # Counting tokens and labels
+                tokens[parts[0]] += 1
+                labels[parts[-1]] += 1
 
+                for col, val_dict in attributes.items():
+                    val_dict[parts[col]] += 1
+
+            # End of file, adding information about the last sequence if necessary
             if current_sequence > 0:
-                # Appending the current sequence length
-                self.length_instances.append(current_sequence)
-
-        if len(column_nb) > 1:
-            raise Exception("Error in the file, there is not the same number of columns")
+                sequence_count += 1
+                sequence_lengths.append(current_sequence)
 
         logging.info("* format: OK")
-        logging.info("* nb. sequences: {:,}".format(len(self.length_instances)))
-        logging.info("* average length of sequences: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
-            np.mean(self.length_instances),
-            np.min(self.length_instances),
-            np.max(self.length_instances),
-            np.std(self.length_instances)
+        logging.info("* nb. sequences: {:,}".format(sequence_count))
+        logging.info("* average sequence length: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
+            np.mean(sequence_lengths),
+            np.min(sequence_lengths),
+            np.max(sequence_lengths),
+            np.std(sequence_lengths)
         ))
-        logging.info("* nb. tokens: {:,}".format(sum([v for k, v in self.tokens.items()])))
+        logging.info("* nb. tokens (col. #0): {:,} (unique={:,})".format(
+            sum([v for k, v in tokens.items()]),
+            len(tokens)
+        ))
+        for i, (col, val_dict) in enumerate(attributes.items(), start=1):
+            nb_attributes = sum([v for k, v in val_dict.items()])
+            logging.info("* nb. att. {} (col. #{}): {:,}".format(
+                i,
+                col,
+                len(val_dict)
+            ))
+            for k, v in val_dict.items():
+                logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
+
+        logging.info("* nb. labels (col. #{}): {:,}".format(list(column_nb)[0] - 1, len(labels)))
+        nb_labels = sum([v for k, v in labels.items()])
+        for k, v in labels.items():
+            logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
 
     def convert_to_tfrecords(self, data_file, target_tfrecords_file_path):
         """
@@ -833,13 +857,15 @@ class TestData:
         :return: nothing
         """
 
-        logging.info("Creating TFRecords file")
+        logging.info("Creating TFRecords file for test instances...")
+
+        sequence_nb = self._get_number_sequences(data_file)
+        self._check_data(data_file, self.feature_columns, list(range(sequence_nb)))
+
+        self.test_stats.nb_instances = sequence_nb
 
         tokens = list()
-        nb_words = 0
-        sequence_length = list()
 
-        # Unique sequence id used to write prediction to file
         sequence_id = 0
 
         # TFRecord writer
@@ -852,34 +878,21 @@ class TestData:
                 if re.match("^$", line):
                     if len(tokens) > 0:
                         self._write_example_to_file(writer, tokens, "{}-{}".format("TEST", sequence_id))
-                        nb_words += len(tokens)
-                        sequence_length.append(len(tokens))
+
                         sequence_id += 1
                         tokens.clear()
 
                     continue
 
                 parts = line.rstrip("\n").split("\t")
-                tokens.append(parts[0])
+                tokens.append(parts)
 
             # End of file, dumping current sequence
             if len(tokens) > 0:
                 self._write_example_to_file(writer, tokens, "{}-{}".format("TEST", sequence_id))
-                nb_words += len(tokens)
-                sequence_length.append(len(tokens))
                 sequence_id += 1
 
         writer.close()
-
-        logging.info("* Nb. sequences: {:,}".format(sequence_id))
-        logging.info("* Nb. words: {:,}".format(nb_words))
-        logging.info("* Nb. unknown words: {:,} ({:.2f}%)".format(
-            self.nb_unknown_words,
-            (self.nb_unknown_words / sum([v for k, v in self.tokens.items()])) * 100
-        ))
-        logging.info("* Nb. unique unknown words: {:,}".format(len(self.unknown_words_set)))
-        logging.info("Dumping unknown word list to file")
-        self._dump_unknown_word_set(self.unknown_words_set, self.unknown_word_file)
 
     def _write_example_to_file(self, writer, tokens, example_id):
         """
@@ -889,7 +902,7 @@ class TestData:
         :return: nothing
         """
 
-        self.nb_instances += 1
+        self.test_stats.sequence_lengths.append(len(tokens))
 
         example = tf.train.SequenceExample()
 
@@ -902,31 +915,39 @@ class TestData:
         x_chars = example.feature_lists.feature_list["x_chars"]
         x_chars_len = example.feature_lists.feature_list["x_chars_len"]
 
+        x_atts = dict()
+        for col in self.feature_columns:
+            x_atts["x_att_{}".format(col)] = example.feature_lists.feature_list["x_att_{}".format(col)]
+
         token_max_size = 0
 
         for token in tokens:
-
-            token_id = self.word_mapping.get(token)
-
-            if not token_id:
-                token_id = self.word_mapping.get("##UNK##")
-                self.nb_unknown_words += 1
-                self.unknown_words_set.add(token)
+            token_id = self.word_mapping.get(token[0])
 
             token_size = 0
-            for char in token:
+            for char in token[0]:
                 if char in self.char_mapping:
                     token_size += 1
 
             if token_size > token_max_size:
                 token_max_size = token_size
 
+            self.test_stats.nb_words += 1
+
+            if not token_id:
+                token_id = self.word_mapping.get("##UNK##")
+                self.test_stats.unknown_words.append(token[0])
+
             x_tokens.feature.add().int64_list.value.append(token_id)
+
+            for col in self.feature_columns:
+                feat_id = self.feature_value_mapping[col].get(token[col])
+                x_atts["x_att_{}".format(col)].feature.add().int64_list.value.append(feat_id)
 
         for token in tokens:
             token_size = 0
 
-            for char in token:
+            for char in token[0]:
                 if char in self.char_mapping:
                     x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
                     token_size += 1
@@ -985,3 +1006,97 @@ class TestData:
         with open(target_file, "w", encoding="UTF-8") as output_file:
             for item in sorted(word_set):
                 output_file.write("{}\n".format(item))
+
+    def _check_data(self, data_file, features_columns, indexes):
+
+        # Fetching labels and attribute values from train instances
+        labels, attributes = self._get_attributes_and_labels(data_file, indexes, features_columns)
+
+        # Checking if attributes values from dev instances are present in train instances
+        for col, att_dict in attributes.items():
+            for k, v in att_dict.items():
+                if k not in self.feature_value_mapping[col]:
+                    logging.info("One feature value from col. #{} in test instances was not present during "
+                                 "training {}:".format(col, k))
+                    logging.info("Check your input files and relaunch yaset")
+
+                    raise FeatureDoesNotExist("A feature value at col. #{} from test instances was not seen during "
+                                              "training: {}".format(col, k))
+
+    @staticmethod
+    def _get_attributes_and_labels(data_file, indexes, features_columns):
+        """
+        Get attribute and labels values from a group of instances
+        :param data_file: file from which instances are extracted
+        :param indexes: instance indexes
+        :param features_columns: feature column indexes
+        :return: labels and attributes
+        """
+
+        # Initializing variables
+        labels = defaultdict(int)
+        attributes = dict()
+        for col in features_columns:
+            attributes[col] = defaultdict(int)
+
+        # Keeping track of sentence id
+        sequence_id = 0
+        current_sequence = list()
+
+        with open(data_file, "r", encoding="UTF-8") as input_file:
+            for line in input_file:
+                if re.match("^$", line):
+                    if len(current_sequence) > 0:
+                        if sequence_id in indexes:
+                            for tok in current_sequence:
+                                labels[tok[-1]] += 1
+
+                                for col in features_columns:
+                                    attributes[col][tok[col]] += 1
+
+                        sequence_id += 1
+                        current_sequence.clear()
+
+                    continue
+
+                parts = line.rstrip("\n").split("\t")
+                current_sequence.append(parts)
+
+            if len(current_sequence) > 0:
+                if sequence_id in indexes:
+                    for tok in current_sequence:
+                        labels[tok[-1]] += 1
+
+                        for col in features_columns:
+                            attributes[col][tok[col]] += 1
+
+        return labels, attributes
+
+    @staticmethod
+    def _get_number_sequences(data_file_path):
+        """
+        Get the total number of sequences in a data file
+        :param data_file_path: data file path
+        :return: number of sequences
+        """
+
+        sequence_count = 0
+
+        with open(data_file_path, "r", encoding="UTF-8") as input_file:
+
+            current_sequence = 0
+
+            for i, line in enumerate(input_file, start=1):
+
+                if re.match("^$", line):
+                    if current_sequence > 0:
+                        current_sequence = 0
+                        sequence_count += 1
+                    continue
+
+                current_sequence += 1
+
+            if current_sequence > 0:
+                sequence_count += 1
+
+        return sequence_count
