@@ -103,7 +103,7 @@ class TrainLogger:
             x.field_names = ["Ite. nb.", "dev acc."]
 
             current_iter_nb = "{:3d}".format(iter_nb)
-            current_score = "{:.3f}".format(payload["dev_score"])
+            current_score = "{:.5f}".format(payload["dev_score"])
 
             x.add_row([current_iter_nb, current_score])
 
