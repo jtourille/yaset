@@ -353,7 +353,7 @@ class TrainData:
         for token in tokens:
             token_size = 0
 
-            for char in token:
+            for char in token[0]:
                 if char in self.char_mapping:
                     x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
                     token_size += 1
