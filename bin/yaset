@@ -33,6 +33,25 @@ def get_training_parameters(configuration):
     return parameters
 
 
+def parse_feature_columns(value):
+
+    raw_parts = value.split(",")
+    raw_parts = [item.strip(" ") for item in raw_parts]
+
+    final_list = [int(item) for item in raw_parts]
+
+    return final_list
+
+
+def log_message(message):
+
+    logging.info("{} {} {}".format(
+        "=" * 10,
+        message,
+        "=" * (70 - len(message) - 2 - 10)
+    ))
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -80,8 +99,6 @@ if __name__ == "__main__":
     ch.setFormatter(log_format)
     log.addHandler(ch)
 
-    # ===============================================================
-
     if args.subparser_name == "LEARN":
 
         # Check if config file does exist
@@ -91,7 +108,7 @@ if __name__ == "__main__":
             ))
 
         # Creating a configparser parser and parsing configuration
-        parsed_configuration = configparser.ConfigParser(allow_no_value=False)
+        parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
         # Checking if the top working dir specified in the configuration exists
@@ -118,15 +135,56 @@ if __name__ == "__main__":
 
         # Setting some variables
         train_file_path = os.path.abspath(parsed_configuration["data"]["train_file_path"])
+
+        # -----------------------------------------------------------
+        # DEV FILE
+
         dev_file_path = None
-        test_file_path = None
         dev_ratio = None
         dev_random_seed = None
 
-        # EMBEDDING LOADING AND PROCESSING
-        # ===========================================================
+        # If there is a 'dev' file provided, check if the file does exist
+        if parsed_configuration.getboolean("data", "use_dev_file"):
+            dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
 
-        logging.info("{} BEGIN - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 15))
+            if not os.path.isfile(dev_file_path):
+                raise FileNotFoundError("The 'dev' file you specified doesn't exist: {}".format(
+                    dev_file_path
+                ))
+
+        # If no 'dev' file is provided, fetch the train/dev ratio and check is it is between 0 and 1
+        if not dev_file_path:
+            dev_ratio = float(parsed_configuration["data"]["dev_ratio"])
+
+            if dev_ratio <= 0 or dev_ratio >= 1:
+                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(dev_ratio))
+
+        # -----------------------------------------------------------
+        # FEATURES
+
+        feature_columns = list()
+
+        if parsed_configuration.getboolean("data", "use_features"):
+            feature_columns = parse_feature_columns(parsed_configuration["data"]["feature_columns"])
+
+        # -----------------------------------------------------------
+        # LOADING AND CHECKING DATA FILES
+
+        log_message("BEGIN - LOADING AND CHECKING DATA FILES")
+
+        # Creating data object
+        data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
+                         dev_ratio=dev_ratio, feature_columns=feature_columns)
+
+        # Checking file format
+        data.check_input_files()
+
+        log_message("END - LOADING AND CHECKING DATA FILES")
+
+        # -----------------------------------------------------------
+        # EMBEDDING LOADING AND PROCESSING
+
+        log_message("BEGIN - EMBEDDING LOADING AND PREPROCESSING")
 
         embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
 
@@ -163,58 +221,19 @@ if __name__ == "__main__":
             # Random embedding will be supported in a later release
             raise Exception("Random embeddings are not supported yet")
 
-        logging.info("{} END - EMBEDDING LOADING AND PREPROCESSING {}".format("=" * 10, "=" * 17))
+        log_message("END - EMBEDDING LOADING AND PREPROCESSING")
 
-        # LOADING AND CHECKING DATA FILES
-        # ===========================================================
-
-        # If there is a 'dev' file provided, check if the file does exist
-        if parsed_configuration.getboolean("data", "use_dev_file"):
-            dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
-
-            if not os.path.isfile(dev_file_path):
-                raise FileNotFoundError("The 'dev' file you specified doesn't exist: {}".format(
-                    dev_file_path
-                ))
-
-        # If there is a 'test' file provided, check if the file does exist
-        if parsed_configuration.getboolean("data", "use_test_file"):
-            test_file_path = os.path.abspath(parsed_configuration["data"]["test_file_path"])
-
-            if not os.path.isfile(test_file_path):
-                raise FileNotFoundError("The 'test' file you specified doesn't exist: {}".format(
-                    test_file_path
-                ))
-
-        # If no 'dev' file is provided, fetch the train/dev ratio and check is it is between 0 and 1
-        if not dev_file_path:
-            dev_ratio = float(parsed_configuration["data"]["dev_ratio"])
-
-            if dev_ratio <= 0 or dev_ratio >= 1:
-                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(dev_ratio))
-
-        logging.info("{} BEGIN - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 19))
-
-        # Creating data object
-        data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
-                         dev_ratio=dev_ratio)
-
-        # Checking file format
-        data.check_input_files()
-
-        logging.info("{} END - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
-
-        logging.info("{} BEGIN - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 26))
+        log_message("BEGIN - CREATING TFRECORDS FILES")
 
         if parsed_configuration.getboolean("data", "dev_use_random_seed") and \
-                parsed_configuration.getboolean("data", "use_dev_file"):
+                not parsed_configuration.getboolean("data", "use_dev_file"):
             dev_random_seed = parsed_configuration.getint("data", "dev_random_seed")
 
         data.create_tfrecords_files(embedding_object, random_seed=dev_random_seed)
 
-        logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
+        log_message("END - CREATING TFRECORDS FILES")
 
-        logging.info("{} BEGIN - LEARNING MODEL {}".format("=" * 10, "=" * 36))
+        log_message("BEGIN - LEARNING MODEL")
 
         train_config = get_training_parameters(parsed_configuration)
         train_model(current_working_directory, embedding_object, data, train_config)
@@ -222,7 +241,7 @@ if __name__ == "__main__":
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
         shutil.copy(os.path.abspath(args.config), target_model_configuration_path)
 
-        logging.info("{} END - LEARNING MODEL {}".format("=" * 10, "=" * 38))
+        log_message("END - LEARNING MODEL")
 
     elif args.subparser_name == "APPLY":
 
@@ -242,24 +261,24 @@ if __name__ == "__main__":
         current_working_directory = os.path.join(working_dir, "yaset-apply-{}".format(timestamp))
         ensure_dir(current_working_directory)
 
-        logging.info("{} BEGIN - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 19))
+        log_message("BEGIN - LOADING AND CHECKING DATA FILES")
 
         data = TestData(input_file, working_dir=current_working_directory, train_model_path=model_path)
 
         data.check_input_file()
 
-        logging.info("{} END - LOADING AND CHECKING DATA FILES {}".format("=" * 10, "=" * 21))
+        log_message("END - LOADING AND CHECKING DATA FILES")
 
-        logging.info("{} BEGIN - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 26))
+        log_message("BEGIN - CREATING TFRECORDS FILES")
 
         target_tfrecords_file_path = os.path.join(os.path.abspath(current_working_directory), "data.tfrecords")
 
         data.convert_to_tfrecords(input_file, target_tfrecords_file_path)
 
-        logging.info("{} END - CREATING TFRECORDS FILES {}".format("=" * 10, "=" * 28))
+        log_message("END - CREATING TFRECORDS FILES")
 
         logging.info("{} BEGIN - APPLYING MODEL {}".format("=" * 10, "=" * 36))
 
         apply_model(current_working_directory, model_path, data)
 
-        logging.info("{} END - APPLYING MODEL {}".format("=" * 10, "=" * 38))
+        log_message("END - APPLYING MODEL")
