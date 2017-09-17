@@ -1,10 +1,10 @@
+import json
 import logging
 import math
 import os
 
 import gensim
 import numpy as np
-import json
 
 from ..error import UnknownTokenAlreadyExists
 
