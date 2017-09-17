@@ -8,3 +8,9 @@ class UnknownTokenAlreadyExists(Error):
 
     def __init__(self, message):
         self.message = message
+
+
+class FeatureDoesNotExist(Error):
+
+    def __init__(self, message):
+        self.message = message
