@@ -107,88 +107,6 @@ class TrainData:
             logging.info("Checking dev file: {}".format(os.path.basename(self.dev_data_file)))
             self._check_file(self.dev_data_file, self.feature_columns)
 
-    @staticmethod
-    def _check_file(data_file, features_columns):
-        """
-        Check input data file format
-        :param data_file: data file to check
-        :return: nothing
-        """
-
-        labels = defaultdict(int)
-        tokens = defaultdict(int)
-
-        attributes = dict()
-        for col in features_columns:
-            attributes[col] = defaultdict(int)
-
-        sequence_lengths = list()
-        column_nb = set()
-
-        sequence_count = 0
-
-        with open(data_file, "r", encoding="UTF-8") as input_file:
-
-            current_sequence = 0
-
-            for i, line in enumerate(input_file, start=1):
-                if re.match("^$", line):
-                    if current_sequence > 0:
-                        sequence_lengths.append(current_sequence)  # Appending current sequence length to list
-                        current_sequence = 0  # Resetting length counter
-                        sequence_count += 1  # Incrementing sequence length
-
-                    continue
-
-                parts = line.rstrip("\n").split("\t")  # Splitting line
-
-                column_nb.add(len(parts))  # Keeping track of the number of columns
-                current_sequence += 1
-
-                # Raising exception if all lines do not have the same number of columns or
-                # if the number of columns is < 2
-                if len(column_nb) > 1 or len(parts) < 2:
-                    raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
-
-                # Counting tokens and labels
-                tokens[parts[0]] += 1
-                labels[parts[-1]] += 1
-
-                for col, val_dict in attributes.items():
-                    val_dict[parts[col]] += 1
-
-            # End of file, adding information about the last sequence if necessary
-            if current_sequence > 0:
-                sequence_count += 1
-                sequence_lengths.append(current_sequence)
-
-        logging.info("* format: OK")
-        logging.info("* nb. sequences: {:,}".format(sequence_count))
-        logging.info("* average sequence length: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
-            np.mean(sequence_lengths),
-            np.min(sequence_lengths),
-            np.max(sequence_lengths),
-            np.std(sequence_lengths)
-        ))
-        logging.info("* nb. tokens (col. #0): {:,} (unique={:,})".format(
-            sum([v for k, v in tokens.items()]),
-            len(tokens)
-        ))
-        for i, (col, val_dict) in enumerate(attributes.items(), start=1):
-            nb_attributes = sum([v for k, v in val_dict.items()])
-            logging.info("* nb. att. {} (col. #{}): {:,}".format(
-                i,
-                col,
-                len(val_dict)
-            ))
-            for k, v in val_dict.items():
-                logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
-
-        logging.info("* nb. labels (col. #{}): {:,}".format(list(column_nb)[0] - 1, len(labels)))
-        nb_labels = sum([v for k, v in labels.items()])
-        for k, v in labels.items():
-            logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
-
     def create_tfrecords_files(self, embedding_object, random_seed=None):
         """
         Create 'train' and 'dev' TFRecords files
@@ -212,20 +130,20 @@ class TrainData:
             train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio,
                                                           random_state=random_seed)
 
-            self.check_split(train_indexes, dev_indexes, self.train_data_file, self.train_data_file,
-                             self.feature_columns)
+            self._check_split(train_indexes, dev_indexes, self.train_data_file, self.train_data_file,
+                              self.feature_columns)
 
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
             logging.info("Building character mapping")
-            self.char_mapping = self.get_char_mapping(self.train_data_file, train_indexes)
+            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
 
             if self.feature_columns:
                 logging.info("Building attribute mapping")
-                self.feature_value_mapping = self.get_feature_value_mapping(self.train_data_file, self.feature_columns,
-                                                                            indexes=train_indexes)
+                self.feature_value_mapping = self._get_feature_value_mapping(self.train_data_file, self.feature_columns,
+                                                                             indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
                     logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
                         i, col, len(self.feature_value_mapping[col])
@@ -233,7 +151,7 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping = self.get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
@@ -266,20 +184,20 @@ class TrainData:
             train_indexes = list(range(sequence_nb_train))
             dev_indexes = list(range(sequence_nb_dev))
 
-            self.check_split(train_indexes, dev_indexes, self.train_data_file, self.dev_data_file,
-                             self.feature_columns)
+            self._check_split(train_indexes, dev_indexes, self.train_data_file, self.dev_data_file,
+                              self.feature_columns)
 
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
             logging.info("Building character mapping")
-            self.char_mapping = self.get_char_mapping(self.train_data_file, train_indexes)
+            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
 
             if self.feature_columns:
                 logging.info("Building attribute mapping")
-                self.feature_value_mapping = self.get_feature_value_mapping(self.train_data_file, self.feature_columns,
-                                                                            indexes=train_indexes)
+                self.feature_value_mapping = self._get_feature_value_mapping(self.train_data_file, self.feature_columns,
+                                                                             indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
                     logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
                         i, col, len(self.feature_value_mapping[col])
@@ -287,7 +205,7 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping = self.get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
@@ -311,35 +229,6 @@ class TrainData:
             # Dumping unknown word set to working dir
             logging.info("* Dumping unknown word list to file")
             self.dev_stats.dump_unknown_tokens(self.unknown_tokens_dev_file)
-
-    @staticmethod
-    def _get_number_sequences(data_file_path):
-        """
-        Get the total number of sequences in a data file
-        :param data_file_path: data file path
-        :return: number of sequences
-        """
-
-        sequence_count = 0
-
-        with open(data_file_path, "r", encoding="UTF-8") as input_file:
-
-            current_sequence = 0
-
-            for i, line in enumerate(input_file, start=1):
-
-                if re.match("^$", line):
-                    if current_sequence > 0:
-                        current_sequence = 0
-                        sequence_count += 1
-                    continue
-
-                current_sequence += 1
-
-            if current_sequence > 0:
-                sequence_count += 1
-
-        return sequence_count
 
     def _convert_to_tfrecords(self, data_file, target_tfrecords_file_path, embedding_object, indexes=None, part=None):
         """
@@ -487,7 +376,7 @@ class TrainData:
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
 
-    def check_split(self, train_indexes, dev_indexes, train_data_file, dev_data_file, features_columns):
+    def _check_split(self, train_indexes, dev_indexes, train_data_file, dev_data_file, features_columns):
         """
         Check if all attributes values from dev instances will be seen in the train part
         :param train_indexes: train instance indexes
@@ -520,7 +409,7 @@ class TrainData:
                                               " instances: {}".format(col, k))
 
     @staticmethod
-    def get_char_mapping(data_file, indexes=None):
+    def _get_char_mapping(data_file, indexes=None):
         """
         Compute the character-mapping file
         :param data_file: source data files containing the sequences to write to the TFRecords file
@@ -575,7 +464,89 @@ class TrainData:
         return char_mapping
 
     @staticmethod
-    def get_feature_value_mapping(data_file, feature_columns, indexes=None):
+    def _check_file(data_file, features_columns):
+        """
+        Check input data file format
+        :param data_file: data file to check
+        :return: nothing
+        """
+
+        labels = defaultdict(int)
+        tokens = defaultdict(int)
+
+        attributes = dict()
+        for col in features_columns:
+            attributes[col] = defaultdict(int)
+
+        sequence_lengths = list()
+        column_nb = set()
+
+        sequence_count = 0
+
+        with open(data_file, "r", encoding="UTF-8") as input_file:
+
+            current_sequence = 0
+
+            for i, line in enumerate(input_file, start=1):
+                if re.match("^$", line):
+                    if current_sequence > 0:
+                        sequence_lengths.append(current_sequence)  # Appending current sequence length to list
+                        current_sequence = 0  # Resetting length counter
+                        sequence_count += 1  # Incrementing sequence length
+
+                    continue
+
+                parts = line.rstrip("\n").split("\t")  # Splitting line
+
+                column_nb.add(len(parts))  # Keeping track of the number of columns
+                current_sequence += 1
+
+                # Raising exception if all lines do not have the same number of columns or
+                # if the number of columns is < 2
+                if len(column_nb) > 1 or len(parts) < 2:
+                    raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
+
+                # Counting tokens and labels
+                tokens[parts[0]] += 1
+                labels[parts[-1]] += 1
+
+                for col, val_dict in attributes.items():
+                    val_dict[parts[col]] += 1
+
+            # End of file, adding information about the last sequence if necessary
+            if current_sequence > 0:
+                sequence_count += 1
+                sequence_lengths.append(current_sequence)
+
+        logging.info("* format: OK")
+        logging.info("* nb. sequences: {:,}".format(sequence_count))
+        logging.info("* average sequence length: {:,.3f} (min={:,} max={:,} std={:,.3f})".format(
+            np.mean(sequence_lengths),
+            np.min(sequence_lengths),
+            np.max(sequence_lengths),
+            np.std(sequence_lengths)
+        ))
+        logging.info("* nb. tokens (col. #0): {:,} (unique={:,})".format(
+            sum([v for k, v in tokens.items()]),
+            len(tokens)
+        ))
+        for i, (col, val_dict) in enumerate(attributes.items(), start=1):
+            nb_attributes = sum([v for k, v in val_dict.items()])
+            logging.info("* nb. att. {} (col. #{}): {:,}".format(
+                i,
+                col,
+                len(val_dict)
+            ))
+            for k, v in val_dict.items():
+                logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
+
+        logging.info("* nb. labels (col. #{}): {:,}".format(list(column_nb)[0] - 1, len(labels)))
+        nb_labels = sum([v for k, v in labels.items()])
+        for k, v in labels.items():
+            logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
+
+    @staticmethod
+    def _get_feature_value_mapping(data_file, feature_columns, indexes=None):
 
         # Will contains labels and tokens
         tokens = list()
@@ -626,7 +597,7 @@ class TrainData:
         return feature_value_mapping
 
     @staticmethod
-    def get_label_mapping(data_file, indexes=None):
+    def _get_label_mapping(data_file, indexes=None):
         """
         Compute the character-mapping file
         :param data_file: source data files containing the sequences to write to the TFRecords file
@@ -678,6 +649,35 @@ class TrainData:
             label_mapping[label] = i
 
         return label_mapping
+
+    @staticmethod
+    def _get_number_sequences(data_file_path):
+        """
+        Get the total number of sequences in a data file
+        :param data_file_path: data file path
+        :return: number of sequences
+        """
+
+        sequence_count = 0
+
+        with open(data_file_path, "r", encoding="UTF-8") as input_file:
+
+            current_sequence = 0
+
+            for i, line in enumerate(input_file, start=1):
+
+                if re.match("^$", line):
+                    if current_sequence > 0:
+                        current_sequence = 0
+                        sequence_count += 1
+                    continue
+
+                current_sequence += 1
+
+            if current_sequence > 0:
+                sequence_count += 1
+
+        return sequence_count
 
     @staticmethod
     def _get_attributes_and_labels(data_file, indexes, features_columns):
