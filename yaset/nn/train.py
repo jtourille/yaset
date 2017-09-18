@@ -730,15 +730,18 @@ def _get_best_model(train_stats_file):
 
     train_stats = json.load(open(os.path.abspath(train_stats_file), "r", encoding="UTF-8"))
 
-    best_score = None
-    best_filename = None
+    iterations = dict()
 
-    for ite_nb, ite_content in train_stats["iterations"].items():
-        if best_score is None:
-            best_score = ite_content["dev_score"]
-            best_filename = ite_content["model_filename"]
-        elif ite_content["dev_score"] > best_score:
-            best_score = ite_content["dev_score"]
-            best_filename = ite_content["model_filename"]
+    for k, v in train_stats["iterations"].items():
+        iterations[int(k)] = v
+
+    logging.info(iterations)
+
+    score_list = [ite["dev_score"] for _, ite in sorted(iterations.items())]
+    score_max = max(score_list)
+
+    best_iteration = score_list.index(score_max) + 1
+
+    best_filename = iterations[best_iteration]["model_filename"]
 
     return best_filename
