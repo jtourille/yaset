@@ -308,8 +308,11 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     # Network parameters for **kwargs usage
     model_args = {
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
+
+        "use_char_embeddings": train_config["use_char_embeddings"],
         "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
         "char_lstm_num_hidden": train_config["char_hidden_layer_size"],
+
         "pl_dropout": tf.placeholder(tf.float32),
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),

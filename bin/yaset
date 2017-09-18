@@ -29,6 +29,7 @@ def get_training_parameters(configuration):
     parameters["batch_size"] = int(configuration["training"]["batch_size"])
     parameters["dropout_rate"] = int(configuration["training"]["batch_size"])
     parameters["char_hidden_layer_size"] = int(configuration["training"]["char_hidden_layer_size"])
+    parameters["use_char_embeddings"] = parsed_configuration.getboolean("training", "use_char_embeddings")
 
     return parameters
 
@@ -246,6 +247,11 @@ if __name__ == "__main__":
         log_message("BEGIN - LEARNING MODEL")
 
         train_config = get_training_parameters(parsed_configuration)
+
+        logging.debug("Current training parameters")
+        for k, v in train_config.items():
+            logging.debug("* {} = {}".format(k, v))
+
         train_model(current_working_directory, embedding_object, data, train_config)
 
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")

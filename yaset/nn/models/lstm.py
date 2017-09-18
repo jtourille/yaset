@@ -4,6 +4,7 @@ import numpy as np
 
 
 def lazy_property(function):
+
     attribute = '_' + function.__name__
 
     @property
@@ -23,6 +24,7 @@ class BiLSTMCRF:
         self.reuse = reuse
         self.test = test
 
+        self.use_char_embeddings = kwargs["use_char_embeddings"]
         self.char_embedding_size = kwargs["char_embedding_matrix_shape"][1]
         self.char_lstm_num_hidden = kwargs["char_lstm_num_hidden"]
 
@@ -30,22 +32,28 @@ class BiLSTMCRF:
         self.x_tokens_fw = batch[2]
         self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1, name="Pouet")
 
-        self.x_chars_fw = batch[3]
-        self.x_chars_len = batch[4]
+        # -----------------------------------------------------------
 
-        # We reverse the sequence for the backward computation
-        # 1 - Reshape the matrix in [batch_size * sequence_length, character_length]
-        self.x_chars_fw_reshaped = tf.reshape(self.x_chars_fw,
-                                              [tf.shape(self.x_chars_fw)[0] * tf.shape(self.x_chars_fw)[1],
-                                               tf.shape(self.x_chars_fw)[2]])
-        # 2 - Flatten the character length tensor
-        self.x_chars_len_reshaped = tf.reshape(self.x_chars_len, [-1])
-        # 3 - Reverse the character sequences
-        self.x_chars_bw = tf.reverse_sequence(self.x_chars_fw_reshaped, self.x_chars_len_reshaped, seq_dim=1)
-        # 4 - Reshape back the matrix to [batch_size, sequence_length, character_length]
-        self.x_chars_bw = tf.reshape(self.x_chars_bw, [tf.shape(self.x_chars_fw)[0],
-                                                       tf.shape(self.x_chars_fw)[1],
-                                                       tf.shape(self.x_chars_fw)[2]])
+        if self.use_char_embeddings:
+
+            self.x_chars_fw = batch[3]
+            self.x_chars_len = batch[4]
+
+            # We reverse the sequence for the backward computation
+            # 1 - Reshape the matrix in [batch_size * sequence_length, character_length]
+            self.x_chars_fw_reshaped = tf.reshape(self.x_chars_fw,
+                                                  [tf.shape(self.x_chars_fw)[0] * tf.shape(self.x_chars_fw)[1],
+                                                   tf.shape(self.x_chars_fw)[2]])
+            # 2 - Flatten the character length tensor
+            self.x_chars_len_reshaped = tf.reshape(self.x_chars_len, [-1])
+            # 3 - Reverse the character sequences
+            self.x_chars_bw = tf.reverse_sequence(self.x_chars_fw_reshaped, self.x_chars_len_reshaped, seq_dim=1)
+            # 4 - Reshape back the matrix to [batch_size, sequence_length, character_length]
+            self.x_chars_bw = tf.reshape(self.x_chars_bw, [tf.shape(self.x_chars_fw)[0],
+                                                           tf.shape(self.x_chars_fw)[1],
+                                                           tf.shape(self.x_chars_fw)[2]])
+
+        # -----------------------------------------------------------
 
         if not test:
             self.y = batch[5]
@@ -63,12 +71,6 @@ class BiLSTMCRF:
         with tf.device('/cpu:0'):
             with tf.variable_scope('matrices', reuse=self.reuse):
 
-                # self.transitions_params = tf.get_variable('transition_params',
-                #                                           dtype=tf.float32,
-                #                                           shape=[self.output_size, self.output_size],
-                #                                           initializer=tf.random_uniform_initializer(0., 1.),
-                #                                           trainable=True)
-
                 self.W = tf.get_variable('embedding_matrix_words',
                                          dtype=tf.float32,
                                          shape=[kwargs["word_embedding_matrix_shape"][0],
@@ -76,12 +78,13 @@ class BiLSTMCRF:
                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
                                          trainable=True)
 
-                self.C = tf.get_variable('embedding_matrix_chars',
-                                         dtype=tf.float32,
-                                         shape=[kwargs["char_embedding_matrix_shape"][0],
-                                                kwargs["char_embedding_matrix_shape"][1]],
-                                         initializer=tf.random_uniform_initializer(-1.0, 1.0),
-                                         trainable=True)
+                if self.use_char_embeddings:
+                    self.C = tf.get_variable('embedding_matrix_chars',
+                                             dtype=tf.float32,
+                                             shape=[kwargs["char_embedding_matrix_shape"][0],
+                                                    kwargs["char_embedding_matrix_shape"][1]],
+                                             initializer=tf.random_uniform_initializer(-1.0, 1.0),
+                                             trainable=True)
 
             if not self.reuse and not self.test:
                 self.embedding_tokens_init = self.W.assign(self.pl_emb)
@@ -91,10 +94,12 @@ class BiLSTMCRF:
             self.embed_words_fw
             self.embed_words_bw
 
-            self.embed_chars_fw
-            self.embed_chars_bw
+            if self.use_char_embeddings:
+                self.embed_chars_fw
+                self.embed_chars_bw
 
-        self.char_representation
+        if self.use_char_embeddings:
+            self.char_representation
 
         self.forward_representation
         self.backward_representation
@@ -105,7 +110,6 @@ class BiLSTMCRF:
             self.loss, self.transitions_params = self.loss_and_transitions
 
         if not self.reuse and not self.test:
-
             self.optimize
 
     @lazy_property
@@ -183,14 +187,18 @@ class BiLSTMCRF:
 
         char_vector = tf.concat([fw_pass_chars, bw_pass_chars], 1)
 
-        final_output = tf.reshape(char_vector, [tf.shape(embed_fw)[0], tf.shape(embed_fw)[1], self.char_lstm_num_hidden * 2])
+        final_output = tf.reshape(char_vector,
+                                  [tf.shape(embed_fw)[0], tf.shape(embed_fw)[1], self.char_lstm_num_hidden * 2])
 
         return final_output
 
     @lazy_property
     def forward_representation(self):
 
-        vector = tf.concat([self.embed_words_fw, self.char_representation], 2)
+        if self.use_char_embeddings:
+            vector = tf.concat([self.embed_words_fw, self.char_representation], 2)
+        else:
+            vector = self.embed_words_fw
 
         with tf.variable_scope('forward_representation', reuse=self.reuse):
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
@@ -206,8 +214,11 @@ class BiLSTMCRF:
     @lazy_property
     def backward_representation(self):
 
-        char_vector_bw = tf.reverse_sequence(self.char_representation, self.x_tokens_len, seq_dim=1)
-        vector = tf.concat([self.embed_words_bw, char_vector_bw], 2)
+        if self.use_char_embeddings:
+            char_vector_bw = tf.reverse_sequence(self.char_representation, self.x_tokens_len, seq_dim=1)
+            vector = tf.concat([self.embed_words_bw, char_vector_bw], 2)
+        else:
+            vector = self.embed_words_bw
 
         with tf.variable_scope('backward_representation', reuse=self.reuse):
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
@@ -224,16 +235,15 @@ class BiLSTMCRF:
     def prediction(self):
 
         with tf.variable_scope('prediction', reuse=self.reuse):
-
             weight = tf.get_variable('prediction_weights',
                                      initializer=self._get_weight(2 * self.lstm_hidden_size, 2 * self.lstm_hidden_size))
             bias = tf.get_variable('prediction_bias',
                                    initializer=self._get_bias(2 * self.lstm_hidden_size))
 
             proj_weight = tf.get_variable('projection_weights',
-                                     initializer=self._get_weight(2 * self.lstm_hidden_size, self.output_size))
+                                          initializer=self._get_weight(2 * self.lstm_hidden_size, self.output_size))
             proj_bias = tf.get_variable('projection_bias',
-                                   initializer=self._get_bias(self.output_size))
+                                        initializer=self._get_bias(self.output_size))
 
             final_vector = tf.concat([self.forward_representation, self.backward_representation], 2)
             final_vector = tf.reshape(final_vector, [-1, 2 * self.lstm_hidden_size])
