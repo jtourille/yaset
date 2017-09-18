@@ -30,7 +30,7 @@ class BiLSTMCRF:
 
         self.x_tokens_len = batch[1]
         self.x_tokens_fw = batch[2]
-        self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1, name="Pouet")
+        self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
 
         # -----------------------------------------------------------
 
@@ -202,7 +202,7 @@ class BiLSTMCRF:
 
         with tf.variable_scope('forward_representation', reuse=self.reuse):
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, output_keep_prob=self.pl_dropout)
+            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=self.pl_dropout)
 
             outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
                                                inputs=vector,
@@ -222,7 +222,7 @@ class BiLSTMCRF:
 
         with tf.variable_scope('backward_representation', reuse=self.reuse):
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, output_keep_prob=self.pl_dropout)
+            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=self.pl_dropout)
 
             outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
                                                inputs=vector,
