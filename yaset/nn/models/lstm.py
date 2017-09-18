@@ -49,6 +49,8 @@ class BiLSTMCRF:
 
         if not test:
             self.y = batch[5]
+        else:
+            self.y = tf.placeholder(tf.int32, shape=[None, None, None])
 
         self.pl_dropout = kwargs["pl_dropout"]
 
@@ -61,11 +63,11 @@ class BiLSTMCRF:
         with tf.device('/cpu:0'):
             with tf.variable_scope('matrices', reuse=self.reuse):
 
-                self.transitions_params = tf.get_variable('transition_params',
-                                                          dtype=tf.float32,
-                                                          shape=[self.output_size, self.output_size],
-                                                          initializer=tf.random_uniform_initializer(0., 1.),
-                                                          trainable=True)
+                # self.transitions_params = tf.get_variable('transition_params',
+                #                                           dtype=tf.float32,
+                #                                           shape=[self.output_size, self.output_size],
+                #                                           initializer=tf.random_uniform_initializer(0., 1.),
+                #                                           trainable=True)
 
                 self.W = tf.get_variable('embedding_matrix_words',
                                          dtype=tf.float32,
@@ -99,8 +101,11 @@ class BiLSTMCRF:
 
         self.prediction
 
+        with tf.variable_scope('loss', reuse=self.reuse):
+            self.loss, self.transitions_params = self.loss_and_transitions
+
         if not self.reuse and not self.test:
-            self.loss
+
             self.optimize
 
     @lazy_property
@@ -221,28 +226,37 @@ class BiLSTMCRF:
         with tf.variable_scope('prediction', reuse=self.reuse):
 
             weight = tf.get_variable('prediction_weights',
-                                     initializer=self._get_weight(2 * self.lstm_hidden_size, self.output_size))
+                                     initializer=self._get_weight(2 * self.lstm_hidden_size, 2 * self.lstm_hidden_size))
             bias = tf.get_variable('prediction_bias',
+                                   initializer=self._get_bias(2 * self.lstm_hidden_size))
+
+            proj_weight = tf.get_variable('projection_weights',
+                                     initializer=self._get_weight(2 * self.lstm_hidden_size, self.output_size))
+            proj_bias = tf.get_variable('projection_bias',
                                    initializer=self._get_bias(self.output_size))
 
             final_vector = tf.concat([self.forward_representation, self.backward_representation], 2)
             final_vector = tf.reshape(final_vector, [-1, 2 * self.lstm_hidden_size])
 
             prediction = tf.add(tf.matmul(final_vector, weight), bias)
+            prediction = tf.tanh(prediction)
+
+            prediction = tf.add(tf.matmul(prediction, proj_weight), proj_bias)
+
             prediction = tf.reshape(prediction, [-1, tf.shape(self.x_tokens_fw)[1], self.output_size])
 
         return prediction
 
     @lazy_property
-    def loss(self):
+    def loss_and_transitions(self):
 
         target_reshaped = tf.to_int32(tf.argmax(self.y, 2))
-        log_likelihood, self.transitions_params = tf.contrib.crf.crf_log_likelihood(self.prediction, target_reshaped,
-                                                                                    self.x_tokens_len)
+        log_likelihood, transitions_params = tf.contrib.crf.crf_log_likelihood(self.prediction, target_reshaped,
+                                                                               self.x_tokens_len)
 
         loss = tf.reduce_mean(-log_likelihood)
 
-        return loss
+        return loss, transitions_params
 
     @lazy_property
     def optimize(self):
@@ -250,6 +264,27 @@ class BiLSTMCRF:
         optimizer = tf.train.AdamOptimizer(0.001)
 
         return optimizer.minimize(self.loss)
+
+    @lazy_property
+    def optimize_adadelta(self):
+
+        optimizer = tf.train.AdadeltaOptimizer(0.001)
+
+        return optimizer.minimize(self.loss)
+
+    @lazy_property
+    def optimize_sgd(self):
+        """
+        SGD with gradient clipping of 5
+        :return:
+        """
+
+        optimizer = tf.train.GradientDescentOptimizer(0.01)
+        gvs = optimizer.compute_gradients(self.loss)
+        capped_gvs = [(tf.clip_by_value(grad, -5., 5.), var) for grad, var in gvs]
+        train_op = optimizer.apply_gradients(capped_gvs)
+
+        return train_op
 
     @staticmethod
     def _get_weight(in_size, out_size):
