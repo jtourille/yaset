@@ -660,6 +660,7 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
     """
 
     nb_sequences = len(sequence_lengths)
+    max_len = max(sequence_lengths)
 
     start = 0
     end = 10
@@ -696,7 +697,11 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
 
         final_buckets = sorted(list(set(final_buckets)))
 
-    _ = final_buckets.pop(-1)
+    if len(final_buckets) >= 1:
+        _ = final_buckets.pop(-1)
+
+    if len(final_buckets) == 0:
+        final_buckets.append(max_len+1)
 
     return sorted(final_buckets)
 
