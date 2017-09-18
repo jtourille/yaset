@@ -954,6 +954,11 @@ class TestData:
                 if char in self.char_mapping:
                     x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
                     token_size += 1
+
+            if token_size == 0:
+                x_chars.feature.add().int64_list.value.append(self.char_mapping[0])
+                token_size += 1
+
             x_chars_len.feature.add().int64_list.value.append(token_size)
 
             while token_size < token_max_size:
