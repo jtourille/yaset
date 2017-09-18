@@ -41,6 +41,8 @@ class GensimEmbeddings:
         logging.debug("-> Fetching embedding matrix from gensim model")
         self.embedding_matrix = gensim_obj.wv.syn0
 
+        logging.debug("-> Matrix dimension: {}".format(self.embedding_matrix.shape))
+
         # Creating token-id mapping
         logging.debug("-> Creating word-id mapping")
         for i, item in enumerate(gensim_obj.wv.index2word):
