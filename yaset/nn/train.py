@@ -12,6 +12,7 @@ from .helpers import TrainLogger
 from .models.lstm import BiLSTMCRF
 from ..tools import ensure_dir
 from ..data.reader import TrainData, TestData
+from sklearn.metrics import accuracy_score
 
 
 def read_and_decode(filename_queue, target_size, feature_columns):
@@ -391,8 +392,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
             dev_counter = 0
 
-            labels_corr = 0
-            labels_pred = 0
+            predictions = list()
+            gold = list()
 
             done = set()
 
@@ -423,9 +424,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                     for label_pred, label_gs in zip(viterbi_sequence, y_target_):
                         target_id = np.argmax(label_gs)
 
-                        labels_pred += 1
-                        if target_id == label_pred:
-                            labels_corr += 1
+                        predictions.append(label_pred)
+                        gold.append(target_id)
 
                 # Logging progress
                 if dev_counter % display_every_n_dev == 0 or cur_percentage >= 100:
@@ -435,8 +435,9 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                     ))
 
             # Computing token accuracy
-            accuracy = float(labels_corr) / labels_pred
+            accuracy = accuracy_score(gold, predictions)
             logging.info("Accuracy: {}".format(accuracy))
+            logging.debug("* nb. pred.: {:,}".format(len(predictions)))
 
             model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
 
@@ -551,12 +552,12 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     # Network parameters for **kwargs usage
     model_args = {
         "word_embedding_matrix_shape": train_data_char["embedding_matrix_shape"],
-        "trainable_word_embeddings": config_train["trainable_word_embeddings"],
+        "trainable_word_embeddings": config_train.getboolean("training", "trainable_word_embeddings"),
 
         "pl_dropout": tf.placeholder(tf.float32),
         "lstm_hidden_size": int(config_train["training"]["hidden_layer_size"]),
 
-        "use_char_embeddings": config_train["use_char_embeddings"],
+        "use_char_embeddings": config_train.getboolean("training", "use_char_embeddings"),
         "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
         "char_lstm_num_hidden": int(config_train["training"]["char_hidden_layer_size"]),
 
