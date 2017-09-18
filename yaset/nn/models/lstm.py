@@ -76,7 +76,7 @@ class BiLSTMCRF:
                                          shape=[kwargs["word_embedding_matrix_shape"][0],
                                                 kwargs["word_embedding_matrix_shape"][1]],
                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
-                                         trainable=True)
+                                         trainable=kwargs["trainable_word_embeddings"])
 
                 if self.use_char_embeddings:
                     self.C = tf.get_variable('embedding_matrix_chars',

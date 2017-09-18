@@ -308,6 +308,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     # Network parameters for **kwargs usage
     model_args = {
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
+        "trainable_word_embeddings": train_config["trainable_word_embeddings"],
 
         "use_char_embeddings": train_config["use_char_embeddings"],
         "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
@@ -550,10 +551,15 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     # Network parameters for **kwargs usage
     model_args = {
         "word_embedding_matrix_shape": train_data_char["embedding_matrix_shape"],
+        "trainable_word_embeddings": config_train["trainable_word_embeddings"],
+
         "pl_dropout": tf.placeholder(tf.float32),
         "lstm_hidden_size": int(config_train["training"]["hidden_layer_size"]),
+
+        "use_char_embeddings": config_train["use_char_embeddings"],
         "char_embedding_matrix_shape": [len(data_object.char_mapping), 8],
         "char_lstm_num_hidden": int(config_train["training"]["char_hidden_layer_size"]),
+
         "output_size": len(train_data_char["label_mapping"])
     }
 
