@@ -28,8 +28,11 @@ def get_training_parameters(configuration):
     parameters["cpu_cores"] = int(configuration["training"]["cpu_cores"])
     parameters["batch_size"] = int(configuration["training"]["batch_size"])
     parameters["dropout_rate"] = float(configuration["training"]["dropout_rate"])
+
     parameters["char_hidden_layer_size"] = int(configuration["training"]["char_hidden_layer_size"])
     parameters["use_char_embeddings"] = parsed_configuration.getboolean("training", "use_char_embeddings")
+    parameters["char_embedding_size"] = int(configuration["training"]["char_embedding_size"])
+
     parameters["trainable_word_embeddings"] = parsed_configuration.getboolean("training", "trainable_word_embeddings")
 
     return parameters
