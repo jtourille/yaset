@@ -221,7 +221,7 @@ class TrainData:
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
 
             logging.info("Creating TFRecords file for dev instances...")
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
+            self._convert_to_tfrecords(self.dev_data_file, self.tfrecords_dev_file,
                                        embedding_object, indexes=dev_indexes, part="DEV")
 
             self.dev_stats.log_stats()
