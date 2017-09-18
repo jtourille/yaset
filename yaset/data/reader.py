@@ -335,7 +335,7 @@ class TrainData:
                 self.dev_stats.nb_words += 1
 
             if not token_id:
-                token_id = embedding_object.word_mapping.get("##UNK##")
+                token_id = embedding_object.word_mapping.get(embedding_object.embedding_unknown_token_id)
                 if part == "TRAIN":
                     self.train_stats.unknown_words.append(token[0])
                 else:
@@ -374,7 +374,8 @@ class TrainData:
             "char_mapping": self.char_mapping,
             "feature_value_mapping": self.feature_value_mapping,
             "feature_nb": self.feature_nb,
-            "feature_columns": self.feature_columns
+            "feature_columns": self.feature_columns,
+            "embedding_unknown_token_id": embedding_object.embedding_unknown_token_id
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
@@ -744,6 +745,8 @@ class TestData:
         self.data_char = json.load(open(data_characteristics_file, "r", encoding="UTF-8"))
 
         self.word_mapping = self.data_char["word_mapping"]
+        self.embedding_unknown_token_id = self.data_char["embedding_unknown_token_id"]
+
         self.char_mapping = self.data_char["char_mapping"]
         self.feature_value_mapping = dict()
         for k, v in self.data_char["feature_value_mapping"].items():
@@ -935,7 +938,7 @@ class TestData:
             self.test_stats.nb_words += 1
 
             if not token_id:
-                token_id = self.word_mapping.get("##UNK##")
+                token_id = self.word_mapping.get(self.embedding_unknown_token_id)
                 self.test_stats.unknown_words.append(token[0])
 
             x_tokens.feature.add().int64_list.value.append(token_id)

@@ -274,7 +274,6 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     coord = tf.train.Coordinator()
 
     # Computing bucket boundaries for bucketing
-    logging.info(len(data_object.train_stats.sequence_lengths))
     train_bucket_boundaries = compute_bucket_boundaries(
         data_object.train_stats.sequence_lengths, train_config["batch_size"])
     logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))

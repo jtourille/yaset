@@ -203,19 +203,29 @@ if __name__ == "__main__":
 
             logging.info("File path: {}".format(embedding_file_path))
 
+            embedding_map_unknown = parsed_configuration.getboolean("data", "map_unknown_token")
+            embedding_unknown_item_id = None
+            if embedding_map_unknown:
+                embedding_unknown_item_id = parsed_configuration.get("data", "unknown_token_id")
+
             # Dynamic loading of embedding module. Allow to write custom modules for specific model formats.
             logging.info("Creating embedding object")
             embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
             embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
-            embedding_object = embedding_class(embedding_file_path)
+            embedding_object = embedding_class(embedding_file_path, embedding_unknown_item_id)
 
             # Loading embedding matrix into embedding object
             logging.info("Loading matrix")
             embedding_object.load_embedding()
 
-            # Building unknown token vector based on embedding matrix
-            logging.info("Building unknown token vector")
-            embedding_object.build_unknown_token()
+            if not embedding_map_unknown:
+                # Building unknown token vector based on embedding matrix
+                logging.info("Building unknown token vector")
+                embedding_unknown_item_id = embedding_object.build_unknown_token()
+            else:
+                logging.info("Unknown token vector already exists, skipping building new one (id={})".format(
+                    embedding_unknown_item_id
+                ))
 
         else:
             # Random embedding will be supported in a later release

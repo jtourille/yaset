@@ -11,7 +11,7 @@ from ..error import UnknownTokenAlreadyExists
 
 class GensimEmbeddings:
 
-    def __init__(self, embedding_file_path):
+    def __init__(self, embedding_file_path, embedding_unknown_token_id):
 
         # Gensim model file path
         self.embedding_file_path = os.path.abspath(embedding_file_path)
@@ -24,6 +24,8 @@ class GensimEmbeddings:
 
         # Embedding matrix
         self.embedding_matrix = None
+
+        self.embedding_unknown_token_id = embedding_unknown_token_id
 
     def load_embedding(self):
         """
@@ -91,6 +93,9 @@ class GensimEmbeddings:
 
         # Creating a mapping for the unknown token vector
         self.word_mapping["##UNK##"] = self.embedding_matrix.shape[0] - 1
+        self.embedding_unknown_token_id = "##UNK##"
+
+        return "##UNK##"
 
     def dump_word_mapping(self, target_file):
 
