@@ -1,7 +1,7 @@
 # Yet Another SEquence Tagger - YASET
 
 YASET is sequence tagger written in [Python](https://www.python.org/).
-The main objective of this project is to provide an an off-the-shelf tool for various [NLP](https://en.wikipedia.org/wiki/Natural_language_processing)-related sequence tagging tasks 
+The main objective of this project is to provide an off-the-shelf tool for various [NLP](https://en.wikipedia.org/wiki/Natural_language_processing)-related sequence tagging tasks 
 (e.g. [Named Entity Recognition](https://en.wikipedia.org/wiki/Named-entity_recognition) or 
 [Part-of-Speech tagging](https://en.wikipedia.org/wiki/Part-of-speech_tagging)).
 
