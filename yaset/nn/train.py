@@ -5,21 +5,20 @@ import math
 import os
 import re
 
-import numpy as np
 import tensorflow as tf
-
-from .helpers import TrainLogger
-from .models.lstm import BiLSTMCRF
-from ..tools import ensure_dir
-from ..data.reader import TrainData, TestData
 from sklearn.metrics import accuracy_score
 
+from .helpers import TrainLogger, conll_eval
+from .models.lstm import BiLSTMCRF
+from ..data.reader import TrainData, TestData
+from ..tools import ensure_dir
 
-def read_and_decode(filename_queue, target_size, feature_columns):
+
+def read_and_decode(filename_queue, feature_columns):
     """
     Read and decode one example from a TFRecords file
+    :param feature_columns: list of feature columns
     :param filename_queue: filename queue containing the TFRecords filenames
-    :param target_size: number of classes for 'one-hot-vector' conversion
     :return: list of tensors representing one example
     """
 
@@ -63,7 +62,7 @@ def read_and_decode(filename_queue, target_size, feature_columns):
             tf.cast(sequence_parsed["x_tokens"], dtype=tf.int32),
             tf.cast(chars, dtype=tf.int32),
             tf.cast(sequence_parsed["x_chars_len"], dtype=tf.int32),
-            tf.one_hot(indices=tf.cast(sequence_parsed["y"], dtype=tf.int32), depth=target_size),
+            tf.cast(sequence_parsed["y"], dtype=tf.int32)
         ]
 
         for col in feature_columns:
@@ -75,8 +74,8 @@ def read_and_decode(filename_queue, target_size, feature_columns):
 def read_and_decode_test(filename_queue, feature_columns):
     """
     Read and decode one example from a TFRecords file
+    :param feature_columns: list of feature columns
     :param filename_queue: filename queue containing the TFRecords filenames
-    :param target_size: number of classes for 'one-hot-vector' conversion
     :return: list of tensors representing one example
     """
 
@@ -127,13 +126,12 @@ def read_and_decode_test(filename_queue, feature_columns):
         return tensor_list
 
 
-def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, num_classes=None, batch_size=None,
+def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, batch_size=None,
                           nb_instances=None):
     """
     Build the train pipeline. Sequences are grouped into buckets for faster training.
     :param tfrecords_file_path: train TFRecords file path
     :param buckets: train buckets
-    :param num_classes: number of labels (for one-hot encoding)
     :param batch_size: mini-batch size
     :return: queue runner list, queues, symbolic link to mini-batch
     """
@@ -150,9 +148,9 @@ def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, num_cla
         filename_queue = tf.train.string_input_producer(tfrecords_list)
 
         # Decode one example
-        tensor_list = read_and_decode(filename_queue, num_classes, feature_columns)
+        tensor_list = read_and_decode(filename_queue, feature_columns)
 
-        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32]
+        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.int32]
         for _ in feature_columns:
             dtypes.append(tf.int32)
 
@@ -164,7 +162,7 @@ def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, num_cla
         inputs = shuffle_queue.dequeue()
         queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 4))
 
-        shapes = [[], [], [None], [None, None], [None], [None, None]]
+        shapes = [[], [], [None], [None, None], [None], [None]]
         for _ in feature_columns:
             shapes.append([None])
 
@@ -179,11 +177,10 @@ def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, num_cla
         return queue_runner_list, [filename_queue, shuffle_queue], batch
 
 
-def _build_dev_pipeline(tfrecords_file_path, feature_columns, num_classes=None, batch_size=None, nb_instances=None):
+def _build_dev_pipeline(tfrecords_file_path, feature_columns, batch_size=None, nb_instances=None):
     """
     Build the dev pipeline
     :param tfrecords_file_path: dev TFRecords file path
-    :param num_classes: number of labels (for one-hot encoding)
     :return: queue runner list, queues, symbolic link to mini-batch
     """
 
@@ -199,10 +196,10 @@ def _build_dev_pipeline(tfrecords_file_path, feature_columns, num_classes=None, 
         filename_queue = tf.train.string_input_producer(tfrecords_list)
 
         # Decode one example
-        tensor_list = read_and_decode(filename_queue, num_classes, feature_columns)
+        tensor_list = read_and_decode(filename_queue, feature_columns)
 
-        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32]
-        shapes = [[], [], [None], [None, None], [None], [None, None]]
+        dtypes = [tf.string, tf.int32, tf.int32, tf.int32, tf.int32, tf.int32]
+        shapes = [[], [], [None], [None, None], [None], [None]]
 
         for _ in feature_columns:
             dtypes.append(tf.int32)
@@ -293,7 +290,6 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
                                             train_bucket_boundaries,
                                             data_object.feature_columns,
-                                            num_classes=len(data_object.label_mapping),
                                             batch_size=train_config["batch_size"],
                                             nb_instances=train_nb_examples)
 
@@ -302,7 +298,6 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     queue_runner_list_dev, queue_list_dev,\
         batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
                                         data_object.feature_columns,
-                                        num_classes=len(data_object.label_mapping),
                                         batch_size=train_config["batch_size"],
                                         nb_instances=dev_nb_examples)
 
@@ -323,11 +318,12 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     }
 
     # Creating main computation sub-graph
-    logging.debug("-> Instantiating NN model ('train' and 'dev')")
+    logging.debug("-> Instantiating NN model ('train')")
     with tf.name_scope('train'):
         model_train = BiLSTMCRF(batch_train, reuse=False, test=False, **model_args)
 
     # Creating dev computation sub-graph, setting reuse to 'true' for weight sharing
+    logging.debug("-> Instantiating NN model ('dev')")
     with tf.name_scope('dev'):
         model_dev = BiLSTMCRF(batch_dev, reuse=True, test=False, **model_args)
 
@@ -392,10 +388,9 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
             dev_counter = 0
 
-            predictions = list()
-            gold = list()
-
             done = set()
+
+            metric_payload = list()
 
             while dev_counter < dev_nb_examples:
 
@@ -406,6 +401,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                 cur_percentage = (float(dev_counter) / dev_nb_examples) * 100
 
                 for seq_id_, seq_len_, unary_scores_, y_target_ in zip(x_id, x_len, y_pred, y_target):
+
+                    curr_seq_metric_payload = list()
 
                     seq_id_str = seq_id_.decode("UTF-8")
 
@@ -418,14 +415,17 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                     unary_scores_ = unary_scores_[:seq_len_]
                     viterbi_sequence,\
                         viterbi_score = tf.contrib.crf.viterbi_decode(unary_scores_,
-                                                                      sess.run(model_dev.transitions_params))
+                                                                      sess.run(model_dev.transition_params))
 
                     # Counting incorrect and correct predictions
                     for label_pred, label_gs in zip(viterbi_sequence, y_target_):
-                        target_id = np.argmax(label_gs)
 
-                        predictions.append(label_pred)
-                        gold.append(target_id)
+                        curr_seq_metric_payload.append({
+                            "gs": data_object.inv_label_mapping[label_gs],
+                            "pred": data_object.inv_label_mapping[label_pred]
+                        })
+
+                    metric_payload.append(curr_seq_metric_payload)
 
                 # Logging progress
                 if dev_counter % display_every_n_dev == 0 or cur_percentage >= 100:
@@ -441,14 +441,43 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                         ))
 
             # Computing token accuracy
-            accuracy = accuracy_score(gold, predictions)
-            logging.info("Accuracy: {}".format(accuracy))
-            logging.debug("* nb. pred.: {:,}".format(len(predictions)))
+            pred_labels = list()
+            gs_labels = list()
+
+            for seq in metric_payload:
+                for tok in seq:
+                    pred_labels.append(tok["pred"])
+                    gs_labels.append(tok["gs"])
+
+            accuracy = accuracy_score(gs_labels, pred_labels)
+
+            if train_config["dev_metric"] == "accuracy":
+
+                logging.info("Accuracy: {}".format(accuracy))
+                logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
+
+                score = accuracy
+
+            elif train_config["dev_metric"] == "conll":
+
+                precision, recall, f1 = conll_eval(metric_payload)
+
+                logging.info("Accuracy: {}".format(accuracy))
+                logging.info("Precision: {}".format(precision))
+                logging.info("Recall: {}".format(recall))
+                logging.info("F1: {}".format(f1))
+
+                score = f1
+
+            else:
+                raise Exception("The 'dev' metric you specified does not exist: {}".format(train_config["dev_metric"]))
+
+            logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
 
             model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
 
             # Adding iteration score to train logger object
-            train_logger.add_iteration_score(iteration_number - 1, accuracy)
+            train_logger.add_iteration_score(iteration_number - 1, score)
             train_logger.add_iteration_model_filename(iteration_number - 1, model_name)
 
             logging.info("Model has been saved at: {}".format(model_name))
@@ -644,7 +673,7 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
             unary_scores_ = unary_scores_[:seq_len_]
             viterbi_sequence, \
                 viterbi_score = tf.contrib.crf.viterbi_decode(unary_scores_,
-                                                              sess.run(model.transitions_params))
+                                                              sess.run(model.transition_params))
 
             pred_sequences[seq_id_str] = viterbi_sequence
 

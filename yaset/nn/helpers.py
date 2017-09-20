@@ -126,3 +126,153 @@ class TrainLogger:
 
         if ite not in self.iterations_log:
             self.iterations_log[ite] = dict()
+
+
+def conll_eval(sequences):
+
+    source_entity = get_entities(sequences, "gs")
+    pred_entity = get_entities(sequences, "pred")
+
+    pred = 0
+    corr = 0
+    gs = 0
+
+    for entity in source_entity:
+        if entity in pred_entity:
+            corr += 1
+
+    pred += len(pred_entity)
+    gs += len(source_entity)
+
+    try:
+        precision = float(corr) / pred
+        recall = float(corr) / gs
+        f1 = (2 * precision * recall) / (precision + recall)
+    except Exception:
+        precision = 0.0
+        recall = 0.0
+        f1 = 0.0
+
+    return precision, recall, f1
+
+
+def get_entities(sequences, att):
+
+    entities = list()
+
+    for i, sequence in enumerate(sequences):
+
+        previous_label = "O"
+        current_cat = None
+        current_tokens = list()
+
+        for j, tok in enumerate(sequence):
+            if tok[att].startswith("B"):
+
+                if previous_label == "I":
+
+                    # Clearing entity
+                    new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                                     "-".join([str(item) for item in sorted(current_tokens)]))
+                    entities.append(new_entity)
+                    current_cat = None
+                    current_tokens.clear()
+
+                    # Starting new entity
+                    current_cat = tok[att].split("-")[1]
+                    previous_label = "B"
+                    current_tokens.append(j)
+
+                elif previous_label == "B":
+
+                    # Clearing entity
+                    new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                                     "-".join([str(item) for item in sorted(current_tokens)]))
+                    entities.append(new_entity)
+                    current_cat = None
+                    current_tokens.clear()
+
+                    # Starting new entity
+                    current_cat = tok[att].split("-")[1]
+                    previous_label = "B"
+                    current_tokens.append(j)
+
+                elif previous_label == "O":
+
+                    # Starting new entity
+                    current_cat = tok[att].split("-")[1]
+                    previous_label = "B"
+                    current_tokens.append(j)
+
+            elif tok[att].startswith("O"):
+
+                if previous_label in ["B", "I"]:
+
+                    # Clearing entity
+                    new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                                     "-".join([str(item) for item in sorted(current_tokens)]))
+                    entities.append(new_entity)
+                    current_cat = None
+                    current_tokens.clear()
+                    previous_label = "O"
+
+            elif tok[att].startswith("I"):
+
+                if previous_label == "O":
+
+                    # Starting new entity
+                    current_cat = tok[att].split("-")[1]
+                    previous_label = "B"
+                    current_tokens.append(j)
+
+                elif previous_label == "B":
+
+                    token_cat = tok[att].split("-")[1]
+
+                    if current_cat != token_cat:
+                        # Clearing entity
+                        new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                                         "-".join([str(item) for item in sorted(current_tokens)]))
+                        entities.append(new_entity)
+                        current_cat = None
+                        current_tokens.clear()
+
+                        # Starting new entity
+                        current_cat = tok[att].split("-")[1]
+                        previous_label = "B"
+                        current_tokens.append(j)
+
+                    else:
+
+                        previous_label = "I"
+                        current_tokens.append(j)
+
+                elif previous_label == "I":
+
+                    token_cat = tok[att].split("-")[1]
+
+                    if current_cat != token_cat:
+                        # Clearing entity
+                        new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                                         "-".join([str(item) for item in sorted(current_tokens)]))
+                        entities.append(new_entity)
+                        current_cat = None
+                        current_tokens.clear()
+
+                        # Starting new entity
+                        current_cat = tok[att].split("-")[1]
+                        previous_label = "B"
+                        current_tokens.append(j)
+
+                    else:
+
+                        previous_label = "I"
+                        current_tokens.append(j)
+
+        if len(current_tokens) > 0:
+            # Clearing entity
+            new_entity = "{:d}_{}_{}".format(i, current_cat,
+                                             "-".join([str(item) for item in sorted(current_tokens)]))
+            entities.append(new_entity)
+
+    return entities

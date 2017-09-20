@@ -42,7 +42,8 @@ class StatsCorpus:
 
 class TrainData:
 
-    def __init__(self, train_data_file, dev_data_file=None, working_dir=None, dev_ratio=None, feature_columns=None):
+    def __init__(self, train_data_file, dev_data_file=None, working_dir=None, dev_ratio=None, feature_columns=None,
+                 lower_input=None, replace_digits=None):
 
         # Paths to tabulated data files
         self.train_data_file = train_data_file
@@ -56,6 +57,8 @@ class TrainData:
         self.dev_ratio = dev_ratio
 
         self.feature_columns = feature_columns
+        self.lower_input = lower_input
+        self.replace_digits = replace_digits
 
         # -----------------------------------------------------------
 
@@ -87,6 +90,7 @@ class TrainData:
         # -----------------------------------------------------------
 
         self.label_mapping = dict()
+        self.inv_label_mapping = dict()
 
         self.char_mapping = dict()
 
@@ -117,6 +121,9 @@ class TrainData:
 
         ensure_dir(self.tfrecords_dir_path)
 
+        logging.debug("Lowercase: {}".format(self.lower_input))
+        logging.debug("Replace digits: {}".format(self.replace_digits))
+
         # Case where there is no dev data file
         if self.train_data_file and not self.dev_data_file:
 
@@ -137,7 +144,8 @@ class TrainData:
             self.dev_stats.nb_instances = len(dev_indexes)
 
             logging.info("Building character mapping")
-            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes)
+            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
+                                                       replace_digits=self.replace_digits)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
 
             if self.feature_columns:
@@ -151,7 +159,7 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
@@ -191,7 +199,8 @@ class TrainData:
             self.dev_stats.nb_instances = len(dev_indexes)
 
             logging.info("Building character mapping")
-            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes)
+            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
+                                                       replace_digits=self.replace_digits)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
 
             if self.feature_columns:
@@ -205,7 +214,7 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
@@ -320,12 +329,26 @@ class TrainData:
 
         for token in tokens:
 
-            token_id = embedding_object.word_mapping.get(token[0])
+            token_str = token[0]
+
+            if self.lower_input:
+                token_str = token_str.lower()
+
+            if self.replace_digits:
+                token_str = re.sub("\d", "0", token_str)
+
+            token_id = embedding_object.word_mapping.get(token_str)
 
             token_size = 0
             for char in token[0]:
-                if char in self.char_mapping:
+                char_str = char
+
+                if self.replace_digits:
+                    char_str = re.sub("\d", "0", char_str)
+
+                if char_str in self.char_mapping:
                     token_size += 1
+
             if token_size > token_max_size:
                 token_max_size = token_size
 
@@ -354,8 +377,12 @@ class TrainData:
             token_size = 0
 
             for char in token[0]:
-                if char in self.char_mapping:
-                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
+                char_str = char
+                if self.replace_digits:
+                    char_str = re.sub("\d", "0", char_str)
+
+                if char_str in self.char_mapping:
+                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char_str])
                     token_size += 1
 
             if token_size == 0:
@@ -380,7 +407,9 @@ class TrainData:
             "feature_value_mapping": self.feature_value_mapping,
             "feature_nb": self.feature_nb,
             "feature_columns": self.feature_columns,
-            "embedding_unknown_token_id": embedding_object.embedding_unknown_token_id
+            "embedding_unknown_token_id": embedding_object.embedding_unknown_token_id,
+            "lower_input": self.lower_input,
+            "replace_digits": self.replace_digits
         }
 
         json.dump(payload, open(os.path.abspath(target_file), "w", encoding="UTF-8"))
@@ -418,7 +447,7 @@ class TrainData:
                                               " instances: {}".format(col, k))
 
     @staticmethod
-    def _get_char_mapping(data_file, indexes=None):
+    def _get_char_mapping(data_file, indexes=None, replace_digits=None):
         """
         Compute the character-mapping file
         :param data_file: source data files containing the sequences to write to the TFRecords file
@@ -465,7 +494,12 @@ class TrainData:
         char_set = set()
         for token in tokens:
             for char in token:
-                char_set.add(char)
+                char_str = char
+
+                if replace_digits:
+                    char_str = re.sub("\d", "0", char_str)
+
+                char_set.add(char_str)
 
         for i, char in enumerate(sorted(char_set)):
             char_mapping[char] = i
@@ -617,6 +651,7 @@ class TrainData:
         # Will contains labels and tokens
         labels = list()
         label_mapping = dict()
+        inv_label_mapping = dict()
 
         sequence_id = 0
 
@@ -656,8 +691,9 @@ class TrainData:
 
         for i, label in enumerate(sorted(label_set)):
             label_mapping[label] = i
+            inv_label_mapping[i] = label
 
-        return label_mapping
+        return label_mapping, inv_label_mapping
 
     @staticmethod
     def _get_number_sequences(data_file_path):
@@ -762,6 +798,9 @@ class TestData:
 
         # Fetching label mapping from training data characteristics
         self.label_mapping = self.data_char["label_mapping"]
+
+        self.lower_input = self.data_char["lower_input"]
+        self.replace_digits = self.data_char["replace_digits"]
 
         self.test_stats = StatsCorpus(name="TEST")
 
@@ -930,11 +969,25 @@ class TestData:
         token_max_size = 0
 
         for token in tokens:
-            token_id = self.word_mapping.get(token[0])
+
+            token_str = token[0]
+
+            if self.replace_digits:
+                token_str = re.sub("\d", "0", token_str)
+
+            if self.lower_input:
+                token_str = token_str.lower()
+
+            token_id = self.word_mapping.get(token_str)
 
             token_size = 0
             for char in token[0]:
-                if char in self.char_mapping:
+                char_str = char
+
+                if self.replace_digits:
+                    char_str = re.sub("\d", "0", char_str)
+
+                if char_str in self.char_mapping:
                     token_size += 1
 
             if token_size > token_max_size:
@@ -956,8 +1009,13 @@ class TestData:
             token_size = 0
 
             for char in token[0]:
-                if char in self.char_mapping:
-                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char])
+                char_str = char
+
+                if self.replace_digits:
+                    char_str = re.sub("\d", 0, char_str)
+
+                if char_str in self.char_mapping:
+                    x_chars.feature.add().int64_list.value.append(self.char_mapping[char_str])
                     token_size += 1
 
             if token_size == 0:
