@@ -1012,7 +1012,7 @@ class TestData:
                 char_str = char
 
                 if self.replace_digits:
-                    char_str = re.sub("\d", 0, char_str)
+                    char_str = re.sub("\d", "0", char_str)
 
                 if char_str in self.char_mapping:
                     x_chars.feature.add().int64_list.value.append(self.char_mapping[char_str])
