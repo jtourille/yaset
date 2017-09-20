@@ -1,6 +1,7 @@
 import functools
 import tensorflow as tf
 import numpy as np
+import logging
 
 
 def lazy_property(function):
@@ -30,6 +31,7 @@ class BiLSTMCRF:
 
         self.x_tokens_len = batch[1]
         self.x_tokens_fw = batch[2]
+
         self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
 
         # -----------------------------------------------------------
@@ -58,7 +60,7 @@ class BiLSTMCRF:
         if not test:
             self.y = batch[5]
         else:
-            self.y = tf.placeholder(tf.int32, shape=[None, None, None])
+            self.y = tf.placeholder(tf.int32, shape=[None, None])
 
         self.pl_dropout = kwargs["pl_dropout"]
 
@@ -67,6 +69,8 @@ class BiLSTMCRF:
 
         self.lstm_hidden_size = kwargs["lstm_hidden_size"]
         self.output_size = kwargs["output_size"]
+
+        logging.debug("-> Matrices")
 
         with tf.device('/cpu:0'):
             with tf.variable_scope('matrices', reuse=self.reuse):
@@ -78,18 +82,25 @@ class BiLSTMCRF:
                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
                                          trainable=kwargs["trainable_word_embeddings"])
 
+                self.transition_params = tf.get_variable('transition_params',
+                                                         dtype=tf.float32,
+                                                         shape=[kwargs["output_size"], kwargs["output_size"]],
+                                                         initializer=tf.random_uniform_initializer(-1.0, 1.0),
+                                                         trainable=True)
+
                 if self.use_char_embeddings:
                     self.C = tf.get_variable('embedding_matrix_chars',
                                              dtype=tf.float32,
-                                             shape=[kwargs["char_embedding_matrix_shape"][0],
-                                                    kwargs["char_embedding_matrix_shape"][1]],
-                                             initializer=tf.random_uniform_initializer(-1.0, 1.0),
+                                             initializer=self._get_weight(kwargs["char_embedding_matrix_shape"][0],
+                                                                          kwargs["char_embedding_matrix_shape"][1]),
                                              trainable=True)
 
             if not self.reuse and not self.test:
                 self.embedding_tokens_init = self.W.assign(self.pl_emb)
 
         with tf.device("/cpu:0"):
+
+            logging.debug("-> Embedding lookups")
 
             self.embed_words_fw
             self.embed_words_bw
@@ -101,14 +112,20 @@ class BiLSTMCRF:
         if self.use_char_embeddings:
             self.char_representation
 
+        logging.debug("-> Forward and Backward representations")
+
         self.forward_representation
         self.backward_representation
 
+        logging.debug("-> Predictions")
+
         self.prediction
 
+        logging.debug("-> Loss")
         with tf.variable_scope('loss', reuse=self.reuse):
-            self.loss, self.transitions_params = self.loss_and_transitions
+            self.loss = self.loss_and_transitions
 
+        logging.debug("-> Optimization")
         if not self.reuse and not self.test:
             self.optimize
 
@@ -179,14 +196,20 @@ class BiLSTMCRF:
                                                                   dtype=tf.float32,
                                                                   sequence_length=reshaped_len)
 
-        len_seq_chars = tf.reshape(self.x_chars_len, [-1]) - 1  # Reshape length tensor and subtracting one
-        index_chars = tf.range(0, tf.shape(input_chars_fw)[0]) * tf.shape(input_chars_fw)[1] + len_seq_chars
+        # Setting the 0 padding values to 1
+        len_clip = tf.clip_by_value(reshaped_len, 1, tf.shape(embed_fw)[2])
 
-        fw_pass_chars = tf.gather(tf.reshape(outputs_fw_chars, [-1, self.char_lstm_num_hidden]), index_chars)
-        bw_pass_chars = tf.gather(tf.reshape(outputs_bw_chars, [-1, self.char_lstm_num_hidden]), index_chars)
+        # Creating partitions
+        partitions = tf.one_hot(len_clip - 1, depth=tf.shape(embed_fw)[2], dtype=tf.int32)
 
-        char_vector = tf.concat([fw_pass_chars, bw_pass_chars], 1)
+        # Gathering outputs
+        select_fw = tf.dynamic_partition(outputs_fw_chars, partitions, 2)
+        select_bw = tf.dynamic_partition(outputs_bw_chars, partitions, 2)
 
+        # Concatenating forward and backward outputs
+        char_vector = tf.concat([select_fw[1], select_bw[1]], 1)
+
+        # Reshaping the output
         final_output = tf.reshape(char_vector,
                                   [tf.shape(embed_fw)[0], tf.shape(embed_fw)[1], self.char_lstm_num_hidden * 2])
 
@@ -260,16 +283,15 @@ class BiLSTMCRF:
     @lazy_property
     def loss_and_transitions(self):
 
-        target_reshaped = tf.to_int32(tf.argmax(self.y, 2))
-        log_likelihood, transitions_params = tf.contrib.crf.crf_log_likelihood(self.prediction, target_reshaped,
-                                                                               self.x_tokens_len)
+        log_likelihood, _ = tf.contrib.crf.crf_log_likelihood(self.prediction, self.y, self.x_tokens_len,
+                                                              transition_params=self.transition_params)
 
         loss = tf.reduce_mean(-log_likelihood)
 
-        return loss, transitions_params
+        return loss
 
     @lazy_property
-    def optimize(self):
+    def optimize_adam(self):
 
         optimizer = tf.train.AdamOptimizer(0.001)
 
@@ -283,13 +305,13 @@ class BiLSTMCRF:
         return optimizer.minimize(self.loss)
 
     @lazy_property
-    def optimize_sgd(self):
+    def optimize(self):
         """
         SGD with gradient clipping of 5
         :return:
         """
 
-        optimizer = tf.train.GradientDescentOptimizer(0.01)
+        optimizer = tf.train.GradientDescentOptimizer(0.005)
         gvs = optimizer.compute_gradients(self.loss)
         capped_gvs = [(tf.clip_by_value(grad, -5., 5.), var) for grad, var in gvs]
         train_op = optimizer.apply_gradients(capped_gvs)
