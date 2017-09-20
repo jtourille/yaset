@@ -27,18 +27,33 @@ def get_training_parameters(configuration):
     parameters["hidden_layer_size"] = int(configuration["training"]["hidden_layer_size"])
     parameters["cpu_cores"] = int(configuration["training"]["cpu_cores"])
     parameters["batch_size"] = int(configuration["training"]["batch_size"])
+
     parameters["dropout_rate"] = float(configuration["training"]["dropout_rate"])
 
+    # Checking dropout rate boundaries
+    if parameters["dropout_rate"] >= 1.0 or parameters["dropout_rate"] < 0.0:
+        raise Exception("The dropout rate you specified is out of bound: {}".format(parameters["dropout_rate"]))
+
+    # Checking dev metric
+    parameters["dev_metric"] = configuration["training"]["dev_metric"]
+    if parameters["dev_metric"] not in ["accuracy", "conll"]:
+        raise Exception("The 'dev' metric you specified does not exist: {}".format(parameters["dev_metric"]))
+
     parameters["char_hidden_layer_size"] = int(configuration["training"]["char_hidden_layer_size"])
-    parameters["use_char_embeddings"] = parsed_configuration.getboolean("training", "use_char_embeddings")
+    parameters["use_char_embeddings"] = configuration.getboolean("training", "use_char_embeddings")
     parameters["char_embedding_size"] = int(configuration["training"]["char_embedding_size"])
 
-    parameters["trainable_word_embeddings"] = parsed_configuration.getboolean("training", "trainable_word_embeddings")
+    parameters["trainable_word_embeddings"] = configuration.getboolean("training", "trainable_word_embeddings")
 
     return parameters
 
 
 def parse_feature_columns(value):
+    """
+    Parse feature parameter
+    :param value: feature value (str)
+    :return:
+    """
 
     raw_parts = value.split(",")
     raw_parts = [item.strip(" ") for item in raw_parts]
@@ -177,9 +192,13 @@ if __name__ == "__main__":
 
         log_message("BEGIN - LOADING AND CHECKING DATA FILES")
 
+        data_lower_input = parsed_configuration.getboolean("data", "lower_input")
+        data_replace_digits = parsed_configuration.getboolean("data", "replace_digits")
+
         # Creating data object
         data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
-                         dev_ratio=dev_ratio, feature_columns=feature_columns)
+                         dev_ratio=dev_ratio, feature_columns=feature_columns, lower_input=data_lower_input,
+                         replace_digits=data_replace_digits)
 
         # Checking file format
         data.check_input_files()
