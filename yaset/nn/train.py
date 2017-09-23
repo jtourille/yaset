@@ -5,6 +5,7 @@ import math
 import os
 import re
 
+import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 
@@ -303,18 +304,28 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
     # Network parameters for **kwargs usage
     model_args = {
+
+        # Word embeddings
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
         "trainable_word_embeddings": train_config["trainable_word_embeddings"],
 
+        # Character embeddings
         "use_char_embeddings": train_config["use_char_embeddings"],
         "char_embedding_matrix_shape": [len(data_object.char_mapping), train_config["char_embedding_size"]],
         "char_lstm_num_hidden": train_config["char_hidden_layer_size"],
 
+        # Misc
         "pl_dropout": tf.placeholder(tf.float32),
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),
         "lstm_hidden_size": train_config["hidden_layer_size"],
-        "output_size": len(data_object.label_mapping)
+        "output_size": len(data_object.label_mapping),
+
+        # Optimization
+        "opt_algo": train_config["opt_algo"],
+        "opt_gc_use": train_config["opt_gc_use"],
+        "opt_gc_val": train_config["opt_gc_val"],
+        "opt_lr": train_config["opt_lr"]
     }
 
     # Creating main computation sub-graph
@@ -411,14 +422,28 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                     else:
                         done.add(seq_id_str)
 
-                    # Decoding with Viterbi
                     unary_scores_ = unary_scores_[:seq_len_]
+
+                    # Tiling and adding START and END tokens
+
+                    start_unary_scores = [[-1000.0] * np.shape(unary_scores_)[1] + [0.0, -1000.0]]
+                    end_unary_tensor = [[-1000.0] * np.shape(unary_scores_)[1] + [-1000.0, 0.0]]
+
+                    tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [np.shape(unary_scores_)[0], 1])
+
+                    tiled_tensor = np.concatenate([unary_scores_, tile], 1)
+
+                    tensor_start_end = np.concatenate([start_unary_scores, tiled_tensor, end_unary_tensor], 0)
+
                     viterbi_sequence,\
-                        viterbi_score = tf.contrib.crf.viterbi_decode(unary_scores_,
+                        viterbi_score = tf.contrib.crf.viterbi_decode(tensor_start_end,
                                                                       sess.run(model_dev.transition_params))
 
+                    with open(os.path.join(os.path.abspath(working_dir), "sequences.lst"), "a+", encoding="UTF-8") as output_file:
+                        output_file.write("{}\n".format([data_object.inv_label_mapping[item] for item in viterbi_sequence[1:-1]]))
+
                     # Counting incorrect and correct predictions
-                    for label_pred, label_gs in zip(viterbi_sequence, y_target_):
+                    for label_pred, label_gs in zip(viterbi_sequence[1:-1], y_target_):
 
                         curr_seq_metric_payload.append({
                             "gs": data_object.inv_label_mapping[label_gs],
@@ -497,7 +522,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
         }
 
         # Optimizing with one mini-batch
-        _, loss = sess.run([model_train.optimize, model_train.loss], feed_dict=params)
+        _, loss = sess.run([model_train.optimize, model_train.loss_crf], feed_dict=params)
 
         # Incrementing counter and computing completion
         train_counter += train_config["batch_size"]
@@ -509,14 +534,14 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                 logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
                     iteration_number,
                     round(100.0, 2),
-                    loss,
+                    -loss,
                     train_nb_examples
                 ))
             else:
                 logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
                     iteration_number,
                     round(cur_percentage, 2),
-                    loss,
+                    -loss,
                     train_counter
                 ))
 
@@ -669,13 +694,24 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
             else:
                 done.add(seq_id_str)
 
-            # Decoding with Viterbi
             unary_scores_ = unary_scores_[:seq_len_]
+
+            # Tiling and adding START and END tokens
+
+            start_unary_scores = [[-1000.0] * np.shape(unary_scores_)[1] + [0.0, -1000.0]]
+            end_unary_tensor = [[-1000.0] * np.shape(unary_scores_)[1] + [-1000.0, 0.0]]
+
+            tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [np.shape(unary_scores_)[0], 1])
+
+            tiled_tensor = np.concatenate([unary_scores_, tile], 1)
+
+            tensor_start_end = np.concatenate([start_unary_scores, tiled_tensor, end_unary_tensor], 0)
+
             viterbi_sequence, \
-                viterbi_score = tf.contrib.crf.viterbi_decode(unary_scores_,
+                viterbi_score = tf.contrib.crf.viterbi_decode(tensor_start_end,
                                                               sess.run(model.transition_params))
 
-            pred_sequences[seq_id_str] = viterbi_sequence
+            pred_sequences[seq_id_str] = viterbi_sequence[1:-1]
 
         # Logging progress
         if counter % display_every_n == 0 or cur_percentage >= 100:
