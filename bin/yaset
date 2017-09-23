@@ -311,6 +311,15 @@ if __name__ == "__main__":
         current_working_directory = os.path.join(working_dir, "yaset-apply-{}".format(timestamp))
         ensure_dir(current_working_directory)
 
+        # Setting up a log file and adding a new handler to the logger
+        log_file = os.path.join(current_working_directory, "{}.log".format(
+            "yaset-apply-{}".format(timestamp)
+        ))
+
+        fh = logging.FileHandler(log_file, encoding="UTF-8")
+        fh.setFormatter(log_format)
+        log.addHandler(fh)
+
         log_message("BEGIN - LOADING AND CHECKING DATA FILES")
 
         data = TestData(input_file, working_dir=current_working_directory, train_model_path=model_path)
