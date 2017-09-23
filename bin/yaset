@@ -12,6 +12,8 @@ from yaset.data.reader import TrainData, TestData
 from yaset.nn.train import train_model, apply_model
 from yaset.tools import ensure_dir
 
+OPT_ALGO = ["sgd", "adam"]
+
 
 def get_training_parameters(configuration):
     """
@@ -44,6 +46,15 @@ def get_training_parameters(configuration):
     parameters["char_embedding_size"] = int(configuration["training"]["char_embedding_size"])
 
     parameters["trainable_word_embeddings"] = configuration.getboolean("training", "trainable_word_embeddings")
+
+    # Optimization
+    parameters["opt_algo"] = configuration.get("training", "opt_algo")
+    if parameters["opt_algo"] not in OPT_ALGO:
+        raise Exception("The optimization algorithm you specified is not recognized: {}".format(parameters["opt_algo"]))
+
+    parameters["opt_gc_use"] = configuration.getboolean("training", "opt_gc_use")
+    parameters["opt_gc_val"] = configuration.getfloat("training", "opt_gc_val")
+    parameters["opt_lr"] = configuration.getfloat("training", "opt_lr")
 
     return parameters
 
