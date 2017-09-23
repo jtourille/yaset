@@ -262,7 +262,7 @@ class TrainData:
 
             for line in input_file:
 
-                if re.match("^$", line):
+                if re.match("^$", line) or re.search("docstart", line.lower()):
                     if current_sequence > 0:
                         current_sequence = 0
 
@@ -905,6 +905,9 @@ class TestData:
         """
 
         logging.info("Creating TFRecords file for test instances...")
+
+        logging.debug("Lowercase: {}".format(self.lower_input))
+        logging.debug("Replace digits: {}".format(self.replace_digits))
 
         sequence_nb = self._get_number_sequences(data_file)
         self._check_data(data_file, self.feature_columns, list(range(sequence_nb)))
