@@ -1,5 +1,7 @@
 import json
 import os
+import logging
+import copy
 
 from prettytable import PrettyTable
 
@@ -276,3 +278,84 @@ def get_entities(sequences, att):
             entities.append(new_entity)
 
     return entities
+
+
+def compute_bucket_boundaries(sequence_lengths, batch_size):
+    """
+    Compute bucket boundaries based on the sequence lengths
+    :param sequence_lengths: sequence length to consider
+    :param batch_size: mini-batch size used for learning
+    :return: buckets boundaries (list)
+    """
+
+    nb_sequences = len(sequence_lengths)
+    max_len = max(sequence_lengths)
+
+    start = 0
+    end = 10
+    done = 0
+
+    final_buckets = list()
+
+    current_bucket = 0
+
+    while done < nb_sequences:
+
+        if nb_sequences - done < batch_size * 4:
+            break
+
+        for length in sequence_lengths:
+            if start < length <= end:
+                current_bucket += 1
+
+        if current_bucket >= batch_size * 4:
+            if start > 0:
+                final_buckets.append(start)
+            if end > 0:
+                final_buckets.append(end)
+
+            done += current_bucket
+            start += 10
+            end += 10
+
+            current_bucket = 0
+        else:
+            end += 10
+
+        final_buckets = sorted(list(set(final_buckets)))
+
+    if len(final_buckets) >= 1:
+        _ = final_buckets.pop(-1)
+
+    if len(final_buckets) == 0:
+        final_buckets.append(max_len+1)
+
+    temp_buckets = copy.deepcopy(final_buckets)
+    temp_buckets.append(0)
+    temp_buckets.append(10000)
+
+    count_total = 0
+
+    for bigram in find_ngrams(sorted(temp_buckets), 2):
+        count_current = 0
+
+        for length in sequence_lengths:
+            if bigram[0] < length <= bigram[1]:
+                count_current += 1
+                count_total += 1
+
+        end = bigram[1]
+
+        if end == 10000:
+            logging.debug("* start={}+ | {:,} instances".format(bigram[0], count_current))
+        else:
+            logging.debug("* start={} -> end={} | {:,} instances".format(bigram[0], bigram[1], count_current))
+
+    logging.debug("* TOTAL={:,}".format(count_total))
+
+    return sorted(final_buckets)
+
+
+def find_ngrams(input_list, n):
+
+    return zip(*[input_list[i:] for i in range(n)])
