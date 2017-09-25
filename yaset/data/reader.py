@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import re
 from collections import defaultdict
 
@@ -20,6 +21,7 @@ class StatsCorpus:
         self.nb_instances = 0
         self.sequence_lengths = list()
         self.nb_words = 0
+        self.replaced_singletons = 0
 
         self.unknown_words = list()
 
@@ -27,11 +29,12 @@ class StatsCorpus:
 
         logging.info("* Nb. sequences: {:,}".format(len(self.sequence_lengths)))
         logging.info("* Nb. tokens: {:,}".format(self.nb_words))
-        logging.info("* Nb. unknown tokens: {:,} ({:.2f}%)".format(
+        logging.info("* Nb. true unknown tokens: {:,} ({:.2f}%)".format(
             len(self.unknown_words),
             (len(self.unknown_words) / self.nb_words) * 100
         ))
-        logging.info("* Nb. unique unknown tokens: {:,}".format(len(list(set(self.unknown_words)))))
+        logging.info("* Nb. true unique unknown tokens: {:,}".format(len(list(set(self.unknown_words)))))
+        logging.info("* Nb. replaced singletons: {:,}".format(self.replaced_singletons))
 
     def dump_unknown_tokens(self, target_file):
 
@@ -59,6 +62,8 @@ class TrainData:
         self.feature_columns = feature_columns
         self.lower_input = lower_input
         self.replace_digits = replace_digits
+
+        self.singletons = None
 
         # -----------------------------------------------------------
 
@@ -198,6 +203,11 @@ class TrainData:
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
+            logging.info("Fetching singleton list")
+            self.singletons = self._get_singletons(self.train_data_file, indexes=train_indexes,
+                                                   lower_input=self.lower_input, replace_digits=self.replace_digits)
+            logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
+
             logging.info("Building character mapping")
             self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
                                                        replace_digits=self.replace_digits)
@@ -262,7 +272,7 @@ class TrainData:
 
             for line in input_file:
 
-                if re.match("^$", line) or re.search("docstart", line.lower()):
+                if re.match("^$", line):
                     if current_sequence > 0:
                         current_sequence = 0
 
@@ -338,6 +348,11 @@ class TrainData:
                 token_str = re.sub("\d", "0", token_str)
 
             token_id = embedding_object.word_mapping.get(token_str)
+
+            if token_str in self.singletons and part == "TRAIN":
+                if random.random() < 0.5:
+                    token_id = embedding_object.word_mapping.get(embedding_object.embedding_unknown_token_id)
+                    self.train_stats.replaced_singletons += 1
 
             token_size = 0
             for char in token[0]:
@@ -447,6 +462,70 @@ class TrainData:
                                               " instances: {}".format(col, k))
 
     @staticmethod
+    def _get_singletons(data_file, indexes=None, lower_input=None, replace_digits=None):
+        """
+        Compute the character-mapping file
+        :param data_file: source data files containing the sequences to write to the TFRecords file
+        :param indexes: indexes of the sequences to write to the TFRecords file
+        :return: nothing
+        """
+
+        # Will contains labels and tokens
+        tokens_count = defaultdict(int)
+        singletons = set()
+        tokens = list()
+
+        sequence_id = 0
+
+        with open(data_file, "r", encoding="UTF-8") as input_file:
+
+            current_tokens = list()
+
+            for line in input_file:
+
+                if re.match("^$", line):
+                    if len(current_tokens) > 0:
+                        if indexes:
+                            if sequence_id in indexes:
+                                tokens = tokens + current_tokens
+                        else:
+                            tokens = tokens + current_tokens
+
+                        current_tokens.clear()
+                        sequence_id += 1
+
+                    continue
+
+                parts = line.rstrip("\n").split("\t")
+
+                tokens.append(parts[0])
+
+            if len(current_tokens) > 0:
+                if indexes:
+                    if sequence_id in indexes:
+                        tokens = tokens + current_tokens
+                else:
+                    tokens = tokens + current_tokens
+
+        for token in tokens:
+
+            token_str = token
+
+            if replace_digits:
+                token_str = re.sub("\d", "0", token_str)
+
+            if lower_input:
+                token_str = token_str.lower()
+
+            tokens_count[token_str] += 1
+
+        for k, v in tokens_count.items():
+            if v == 1:
+                singletons.add(k)
+
+        return singletons
+
+    @staticmethod
     def _get_char_mapping(data_file, indexes=None, replace_digits=None):
         """
         Compute the character-mapping file
@@ -501,8 +580,10 @@ class TrainData:
 
                 char_set.add(char_str)
 
-        for i, char in enumerate(sorted(char_set)):
+        for i, char in enumerate(sorted(char_set), start=1):
             char_mapping[char] = i
+
+        char_mapping["pad_character"] = 0
 
         return char_mapping
 
@@ -941,6 +1022,8 @@ class TestData:
             if len(tokens) > 0:
                 self._write_example_to_file(writer, tokens, "{}-{}".format("TEST", sequence_id))
                 sequence_id += 1
+
+        self.test_stats.log_stats()
 
         writer.close()
 
