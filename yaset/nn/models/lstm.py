@@ -282,7 +282,7 @@ class BiLSTMCRF:
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
 
             # Applying dropout on input embeddings
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=self.pl_dropout)
+            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=1.0 - self.pl_dropout)
 
             outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
                                                inputs=fw_tensor,
@@ -313,7 +313,7 @@ class BiLSTMCRF:
             lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
 
             # Applying dropout on input embeddings
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=self.pl_dropout)
+            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=1.0 - self.pl_dropout)
 
             outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
                                                inputs=bw_tensor,
