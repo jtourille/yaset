@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 
-from .helpers import TrainLogger, conll_eval
+from .helpers import TrainLogger, conll_eval, compute_bucket_boundaries
 from .models.lstm import BiLSTMCRF
 from ..data.reader import TrainData, TestData
 from ..tools import ensure_dir
@@ -273,6 +273,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     coord = tf.train.Coordinator()
 
     # Computing bucket boundaries for bucketing
+    logging.debug("-> Computing bucket boundaries")
     train_bucket_boundaries = compute_bucket_boundaries(
         data_object.train_stats.sequence_lengths, train_config["batch_size"])
     logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
@@ -394,7 +395,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
             logging.info("Evaluating on dev corpus")
 
             params = {
-                model_args["pl_dropout"]: 1.0
+                model_args["pl_dropout"]: 0.0
             }
 
             dev_counter = 0
@@ -509,7 +510,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
             if iteration_number - 1 != 1:
                 logging.info("Cleaning model directory (saving space)")
-                delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
+                _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
 
             # Quitting main loop if patience is reached
             if train_logger.check_patience(train_config["patience"]):
@@ -582,13 +583,22 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
 
 def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
+    """
+    Apply model on test data
+    :param working_dir: current working directory
+    :param model_dir: yaset model path
+    :param data_object: TestData object
+    :param n_jobs: number of cores to use
+    :return: nothing
+    """
 
+    # Setting some TensorFlow session parameters
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = n_jobs
     config_tf.inter_op_parallelism_threads = n_jobs
 
     # Load config file used during training
-    config_train = configparser.ConfigParser(allow_no_value=False)
+    config_train = configparser.ConfigParser()
     config_train.read(os.path.join(model_dir, "config.ini"))
 
     # Load data characteristics from log file
@@ -605,7 +615,6 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     coord = tf.train.Coordinator()
 
     nb_examples = data_object.test_stats.nb_instances
-    logging.info(nb_examples)
 
     tfrecords_file_path = os.path.join(os.path.abspath(working_dir), "data.tfrecords")
 
@@ -642,6 +651,7 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     with tf.device('/cpu:0'):
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
+    # Retrieving model filename based on training statistics
     tf_model_saver_path = os.path.join(model_dir, "tfmodels")
     train_stats_file = os.path.join(model_dir, "train_stats.json")
     best_filename = os.path.join(tf_model_saver_path, _get_best_model(train_stats_file))
@@ -670,7 +680,7 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     counter = 0
 
     params = {
-        model_args["pl_dropout"]: 1.0
+        model_args["pl_dropout"]: 0.0
     }
 
     display_every_n = math.ceil((nb_examples // 64) * 0.05) * 64
@@ -697,11 +707,10 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
             unary_scores_ = unary_scores_[:seq_len_]
 
             # Tiling and adding START and END tokens
+            start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
+            end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
 
-            start_unary_scores = [[-1000.0] * np.shape(unary_scores_)[1] + [0.0, -1000.0]]
-            end_unary_tensor = [[-1000.0] * np.shape(unary_scores_)[1] + [-1000.0, 0.0]]
-
-            tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [np.shape(unary_scores_)[0], 1])
+            tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
 
             tiled_tensor = np.concatenate([unary_scores_, tile], 1)
 
@@ -741,65 +750,18 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     sess.close()
 
 
-def compute_bucket_boundaries(sequence_lengths, batch_size):
+def _delete_models(indices, model_dir):
     """
-    Compute bucket boundaries based on the sequence lengths
-    :param sequence_lengths: sequence length to consider
-    :param batch_size: mini-batch size used for learning
-    :return: buckets boundaries (list)
+    Clean model snapshot directory
+    :param indices: iteration IDs
+    :param model_dir: model path
+    :return: nothing
     """
 
-    nb_sequences = len(sequence_lengths)
-    max_len = max(sequence_lengths)
-
-    start = 0
-    end = 10
-    done = 0
-
-    final_buckets = list()
-
-    current_bucket = 0
-
-    while done < nb_sequences:
-
-        if nb_sequences - done < batch_size * 4:
-            break
-
-        for length in sequence_lengths:
-            if start < length <= end:
-                current_bucket += 1
-
-        if current_bucket >= batch_size * 4:
-            if start > 0:
-                final_buckets.append(start)
-            if end > 0:
-                final_buckets.append(end)
-
-            logging.debug("* start={} -> end={} | {} instances".format(start, end, current_bucket))
-
-            done += current_bucket
-            start += 10
-            end += 10
-
-            current_bucket = 0
-        else:
-            end += 10
-
-        final_buckets = sorted(list(set(final_buckets)))
-
-    if len(final_buckets) >= 1:
-        _ = final_buckets.pop(-1)
-
-    if len(final_buckets) == 0:
-        final_buckets.append(max_len+1)
-
-    return sorted(final_buckets)
-
-
-def delete_models(indices, model_dir):
-
+    # Building regular expression
     regex = re.compile("model.ckpt-({})\.".format("|".join([str(i) for i in indices])))
 
+    # Deleting files
     for root, dirs, files in os.walk(os.path.abspath(model_dir)):
         for filename in files:
             if regex.match(filename):
@@ -807,21 +769,30 @@ def delete_models(indices, model_dir):
 
 
 def _get_best_model(train_stats_file):
+    """
+    Return best training iteration file path
+    :param train_stats_file: training log file path
+    :return: filename
+    """
 
+    # Build model file path
     train_stats = json.load(open(os.path.abspath(train_stats_file), "r", encoding="UTF-8"))
 
+    # Fetching iteration dev scores
     iterations = dict()
 
     for k, v in train_stats["iterations"].items():
         iterations[int(k)] = v
 
-    logging.info(iterations)
-
     score_list = [ite["dev_score"] for _, ite in sorted(iterations.items())]
+
+    # Finding best score
     score_max = max(score_list)
 
+    # Fetching iteration number
     best_iteration = score_list.index(score_max) + 1
 
+    # Fetching filename
     best_filename = iterations[best_iteration]["model_filename"]
 
     return best_filename
