@@ -150,7 +150,7 @@ def conll_eval(sequences):
         precision = float(corr) / pred
         recall = float(corr) / gs
         f1 = (2 * precision * recall) / (precision + recall)
-    except Exception:
+    except ZeroDivisionError:
         precision = 0.0
         recall = 0.0
         f1 = 0.0
