@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 
-from .helpers import TrainLogger, conll_eval, compute_bucket_boundaries
+from .helpers import TrainLogger, conll_evaluation, compute_bucket_boundaries
 from .models.lstm import BiLSTMCRF
 from ..data.reader import TrainData, TestData
 from ..tools import ensure_dir
@@ -427,10 +427,10 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
                     # Tiling and adding START and END tokens
 
-                    start_unary_scores = [[-1000.0] * np.shape(unary_scores_)[1] + [0.0, -1000.0]]
-                    end_unary_tensor = [[-1000.0] * np.shape(unary_scores_)[1] + [-1000.0, 0.0]]
+                    start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
+                    end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
 
-                    tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [np.shape(unary_scores_)[0], 1])
+                    tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
 
                     tiled_tensor = np.concatenate([unary_scores_, tile], 1)
 
@@ -439,9 +439,6 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                     viterbi_sequence,\
                         viterbi_score = tf.contrib.crf.viterbi_decode(tensor_start_end,
                                                                       sess.run(model_dev.transition_params))
-
-                    with open(os.path.join(os.path.abspath(working_dir), "sequences.lst"), "a+", encoding="UTF-8") as output_file:
-                        output_file.write("{}\n".format([data_object.inv_label_mapping[item] for item in viterbi_sequence[1:-1]]))
 
                     # Counting incorrect and correct predictions
                     for label_pred, label_gs in zip(viterbi_sequence[1:-1], y_target_):
@@ -486,7 +483,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
             elif train_config["dev_metric"] == "conll":
 
-                precision, recall, f1 = conll_eval(metric_payload)
+                precision, recall, f1 = conll_evaluation(metric_payload)
 
                 logging.info("Accuracy: {}".format(accuracy))
                 logging.info("Precision: {}".format(precision))
