@@ -148,10 +148,15 @@ class TrainData:
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
+            logging.info("Fetching singleton list")
+            self.singletons = self._get_singletons(self.train_data_file, indexes=train_indexes,
+                                                   lower_input=self.lower_input, replace_digits=self.replace_digits)
+            logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
+
             logging.info("Building character mapping")
             self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
                                                        replace_digits=self.replace_digits)
-            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
+            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
             if self.feature_columns:
                 logging.info("Building attribute mapping")
@@ -211,7 +216,7 @@ class TrainData:
             logging.info("Building character mapping")
             self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
                                                        replace_digits=self.replace_digits)
-            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping)))
+            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
             if self.feature_columns:
                 logging.info("Building attribute mapping")

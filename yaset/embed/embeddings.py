@@ -54,7 +54,7 @@ class Embeddings:
 
         tries = list()
 
-        for i in range(10):
+        for i in range(1, 11):
             unknown_token_id = "{}UNK{}".format("#" * i, "#" * i)
             tries.append(unknown_token_id)
             if self.word_mapping.get(unknown_token_id):
