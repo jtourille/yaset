@@ -130,26 +130,36 @@ class TrainLogger:
             self.iterations_log[ite] = dict()
 
 
-def conll_eval(sequences):
+def conll_evaluation(sequences):
+    """
+    Perform CoNLL-like evaluation implemented in python for ease of use
+    :param sequences: sequences of tokens. Each token is a dictionary with two attributes 'gs' and 'pred'
+    :return: precision, recall and f1
+    """
 
-    source_entity = get_entities(sequences, "gs")
+    # Fetching gold standard and predicted entities
+    gs_entity = get_entities(sequences, "gs")
     pred_entity = get_entities(sequences, "pred")
 
+    # Initializing counters for metric computation
     pred = 0
     corr = 0
     gs = 0
 
-    for entity in source_entity:
+    # Counting correctly predicted entities
+    for entity in gs_entity:
         if entity in pred_entity:
             corr += 1
 
     pred += len(pred_entity)
-    gs += len(source_entity)
+    gs += len(gs_entity)
 
+    # Computing precision, recall and metrics
     try:
         precision = float(corr) / pred
         recall = float(corr) / gs
         f1 = (2 * precision * recall) / (precision + recall)
+
     except ZeroDivisionError:
         precision = 0.0
         recall = 0.0
@@ -158,7 +168,13 @@ def conll_eval(sequences):
     return precision, recall, f1
 
 
-def get_entities(sequences, att):
+def get_entities(sequences, entity_type):
+    """
+    Get entities from sequences (predicted or gold-standard)
+    :param sequences: list of sequences
+    :param entity_type: entity type to fetch ("gs" or "pred")
+    :return: list of entities
+    """
 
     entities = list()
 
@@ -169,9 +185,9 @@ def get_entities(sequences, att):
         current_tokens = list()
 
         for j, tok in enumerate(sequence):
-            if tok[att].startswith("B"):
+            if tok[entity_type].startswith("B") or tok[entity_type].startswith("S"):
 
-                if previous_label == "I":
+                if previous_label in ["I", "E"]:
 
                     # Clearing entity
                     new_entity = "{:d}_{}_{}".format(i, current_cat,
@@ -181,11 +197,11 @@ def get_entities(sequences, att):
                     current_tokens.clear()
 
                     # Starting new entity
-                    current_cat = tok[att].split("-")[1]
+                    current_cat = tok[entity_type].split("-")[1]
                     previous_label = "B"
                     current_tokens.append(j)
 
-                elif previous_label == "B":
+                elif previous_label in ["B", "S"]:
 
                     # Clearing entity
                     new_entity = "{:d}_{}_{}".format(i, current_cat,
@@ -195,20 +211,20 @@ def get_entities(sequences, att):
                     current_tokens.clear()
 
                     # Starting new entity
-                    current_cat = tok[att].split("-")[1]
+                    current_cat = tok[entity_type].split("-")[1]
                     previous_label = "B"
                     current_tokens.append(j)
 
                 elif previous_label == "O":
 
                     # Starting new entity
-                    current_cat = tok[att].split("-")[1]
+                    current_cat = tok[entity_type].split("-")[1]
                     previous_label = "B"
                     current_tokens.append(j)
 
-            elif tok[att].startswith("O"):
+            elif tok[entity_type].startswith("O"):
 
-                if previous_label in ["B", "I"]:
+                if previous_label in ["B", "I", "S", "E"]:
 
                     # Clearing entity
                     new_entity = "{:d}_{}_{}".format(i, current_cat,
@@ -218,18 +234,18 @@ def get_entities(sequences, att):
                     current_tokens.clear()
                     previous_label = "O"
 
-            elif tok[att].startswith("I"):
+            elif tok[entity_type].startswith("I") or tok[entity_type].startswith("E"):
 
                 if previous_label == "O":
 
                     # Starting new entity
-                    current_cat = tok[att].split("-")[1]
+                    current_cat = tok[entity_type].split("-")[1]
                     previous_label = "B"
                     current_tokens.append(j)
 
-                elif previous_label == "B":
+                elif previous_label in ["B", "S"]:
 
-                    token_cat = tok[att].split("-")[1]
+                    token_cat = tok[entity_type].split("-")[1]
 
                     if current_cat != token_cat:
                         # Clearing entity
@@ -240,7 +256,7 @@ def get_entities(sequences, att):
                         current_tokens.clear()
 
                         # Starting new entity
-                        current_cat = tok[att].split("-")[1]
+                        current_cat = tok[entity_type].split("-")[1]
                         previous_label = "B"
                         current_tokens.append(j)
 
@@ -249,9 +265,9 @@ def get_entities(sequences, att):
                         previous_label = "I"
                         current_tokens.append(j)
 
-                elif previous_label == "I":
+                elif previous_label in ["I", "E"]:
 
-                    token_cat = tok[att].split("-")[1]
+                    token_cat = tok[entity_type].split("-")[1]
 
                     if current_cat != token_cat:
                         # Clearing entity
@@ -262,7 +278,7 @@ def get_entities(sequences, att):
                         current_tokens.clear()
 
                         # Starting new entity
-                        current_cat = tok[att].split("-")[1]
+                        current_cat = tok[entity_type].split("-")[1]
                         previous_label = "B"
                         current_tokens.append(j)
 
