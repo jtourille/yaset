@@ -132,7 +132,7 @@ class TrainLogger:
 
 def conll_evaluation(sequences):
     """
-    Perform CoNLL-like evaluation implemented in python for ease of use
+    Perform CoNLL-like evaluation. Implemented in python for ease of use.
     :param sequences: sequences of tokens. Each token is a dictionary with two attributes 'gs' and 'pred'
     :return: precision, recall and f1
     """
