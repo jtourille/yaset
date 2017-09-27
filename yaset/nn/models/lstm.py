@@ -94,7 +94,12 @@ class BiLSTMCRF:
 
         logging.debug("-> Creating matrices")
 
-        with tf.device('/cpu:0'):
+        if self.train_config["store_matrices_on_gpu"]:
+            device_str = "/gpu:0"
+        else:
+            device_str = "/cpu:0"
+
+        with tf.device(device_str):
             with tf.variable_scope('matrices', reuse=self.reuse):
 
                 self.W = tf.get_variable('embedding_matrix_words',
@@ -121,7 +126,7 @@ class BiLSTMCRF:
             if not self.reuse and not self.test:
                 self.embedding_tokens_init = self.W.assign(self.pl_emb)
 
-        with tf.device("/cpu:0"):
+        with tf.device(device_str):
 
             logging.debug("-> Embedding lookups")
 
@@ -156,8 +161,7 @@ class BiLSTMCRF:
         :return: tf.nn.embedding_lookup object
         """
 
-        with tf.device('/cpu:0'):
-            embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_fw, name='lookup_tokens_fw')
+        embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_fw, name='lookup_tokens_fw')
 
         return embed_words
 
@@ -168,8 +172,7 @@ class BiLSTMCRF:
         :return: tf.nn.embedding_lookup object
         """
 
-        with tf.device('/cpu:0'):
-            embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_bw, name='lookup_tokens_bw')
+        embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_bw, name='lookup_tokens_bw')
 
         return embed_words
 
@@ -180,8 +183,7 @@ class BiLSTMCRF:
         :return: tf.nn.embedding_lookup object
         """
 
-        with tf.device('/cpu:0'):
-            embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_fw, name='lookup_chars_fw')
+        embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_fw, name='lookup_chars_fw')
 
         return embed_chars
 
@@ -192,8 +194,7 @@ class BiLSTMCRF:
         :return: tf.nn.embedding_lookup object
         """
 
-        with tf.device('/cpu:0'):
-            embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_bw, name='lookup_chars_bw')
+        embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_bw, name='lookup_chars_bw')
 
         return embed_chars
 
