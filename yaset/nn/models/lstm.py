@@ -34,22 +34,20 @@ class BiLSTMCRF:
         self.reuse = reuse
         self.test = test
 
-        self.use_char_embeddings = kwargs["use_char_embeddings"]
-        self.char_embedding_size = kwargs["char_embedding_matrix_shape"][1]
-        self.char_lstm_num_hidden = kwargs["char_lstm_num_hidden"]
+        self.train_config = dict()
+        for k, v in kwargs.items():
+            self.train_config[k] = v
+
+        self.use_char_embeddings = self.train_config["use_char_embeddings"]
+        self.char_embedding_size = self.train_config["char_embedding_matrix_shape"][1]
+        self.char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
 
         self.x_tokens_len = batch[1]
         self.x_tokens_fw = batch[2]
 
         self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
 
-        self.output_size = kwargs["output_size"]
-
-        if not self.test:
-            self.opt_algo = kwargs["opt_algo"]
-            self.opt_gc_use = kwargs["opt_gc_use"]
-            self.opt_gc_val = kwargs["opt_gc_val"]
-            self.opt_lr = kwargs["opt_lr"]
+        self.output_size = self.train_config["output_size"]
 
         # -----------------------------------------------------------
         # Character embeddings
@@ -85,14 +83,14 @@ class BiLSTMCRF:
         else:
             self.y = tf.placeholder(tf.int32, shape=[None, None])
 
-        self.pl_dropout = kwargs["pl_dropout"]
+        self.pl_dropout = self.train_config["pl_dropout"]
 
         # If not in dev not test phase
         if not self.reuse and not self.test:
-            self.pl_emb = kwargs["pl_emb"]
+            self.pl_emb = self.train_config["pl_emb"]
 
-        self.lstm_hidden_size = kwargs["lstm_hidden_size"]
-        self.output_size = kwargs["output_size"]
+        self.lstm_hidden_size = self.train_config["hidden_layer_size"]
+        self.output_size = self.train_config["output_size"]
 
         logging.debug("-> Creating matrices")
 
@@ -101,22 +99,23 @@ class BiLSTMCRF:
 
                 self.W = tf.get_variable('embedding_matrix_words',
                                          dtype=tf.float32,
-                                         shape=[kwargs["word_embedding_matrix_shape"][0],
-                                                kwargs["word_embedding_matrix_shape"][1]],
+                                         shape=[self.train_config["word_embedding_matrix_shape"][0],
+                                                self.train_config["word_embedding_matrix_shape"][1]],
                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
-                                         trainable=kwargs["trainable_word_embeddings"])
+                                         trainable=self.train_config["trainable_word_embeddings"])
 
                 self.transition_params = tf.get_variable('transition_params',
                                                          dtype=tf.float32,
-                                                         shape=[kwargs["output_size"] + 2, kwargs["output_size"] + 2],
+                                                         shape=[self.train_config["output_size"] + 2,
+                                                                self.train_config["output_size"] + 2],
                                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
                                                          trainable=True)
 
                 if self.use_char_embeddings:
                     self.C = tf.get_variable('embedding_matrix_chars',
                                              dtype=tf.float32,
-                                             initializer=self._get_weight(kwargs["char_embedding_matrix_shape"][0],
-                                                                          kwargs["char_embedding_matrix_shape"][1]),
+                                             initializer=self._get_weight(self.train_config["char_embedding_matrix_shape"][0],
+                                                                          self.train_config["char_embedding_matrix_shape"][1]),
                                              trainable=True)
 
             if not self.reuse and not self.test:
@@ -468,16 +467,17 @@ class BiLSTMCRF:
         :return:
         """
 
-        if self.opt_algo == "adam":
-            optimizer = tf.train.AdamOptimizer(self.opt_lr)
-        elif self.opt_algo == "sgd":
-            optimizer = tf.train.GradientDescentOptimizer(self.opt_lr)
+        if self.train_config["opt_algo"] == "adam":
+            optimizer = tf.train.AdamOptimizer(self.train_config["opt_lr"])
+        elif self.train_config["opt_algo"] == "sgd":
+            optimizer = tf.train.GradientDescentOptimizer(self.train_config["opt_lr"])
         else:
             raise Exception("The optimization algorithm you specified does not exist")
 
-        if self.opt_gc_use:
+        if self.train_config["opt_gc_use"]:
             gvs = optimizer.compute_gradients(-self.loss_crf)
-            capped_gvs = [(tf.clip_by_value(grad, -5., 5.), var) for grad, var in gvs]
+            capped_gvs = [(tf.clip_by_value(grad, -self.train_config["opt_gs_val"], self.train_config["opt_gs_val"]),
+                           var) for grad, var in gvs]
             train_op = optimizer.apply_gradients(capped_gvs)
         else:
             train_op = optimizer.minimize(-self.loss_crf)

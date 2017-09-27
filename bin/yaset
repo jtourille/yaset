@@ -14,6 +14,102 @@ from yaset.tools import ensure_dir
 
 OPT_ALGO = ["sgd", "adam"]
 
+MODEL_PARAMETERS = {
+    "bilstm-char-crf": {
+        "int_parameters": ["hidden_layer_size"],
+        "float_parameters": ["dropout_rate"],
+        "string_parameters": list(),
+        "boolean_parameters": list(),
+        "cond_parameters": {
+            "use_char_embeddings": {
+                "int_parameters": ["char_hidden_layer_size", "char_embedding_size"],
+                "float_parameters": list(),
+                "string_parameters": list(),
+                "boolean_parameters": list(),
+            }
+        }
+    }
+}
+
+GENERAL_PARAMETERS = {
+    "int_parameters": ["max_iterations", "patience", "cpu_cores", "batch_size"],
+    "float_parameters": ["opt_lr"],
+    "string_parameters": ["model_type", "dev_metric", 'opt_algo'],
+    "boolean_parameters": ["trainable_word_embeddings", "store_matrices_on_gpu"],
+    "cond_parameters": {
+        "opt_gc_use": {
+            "int_parameters": list(),
+            "float_parameters": ["opt_gs_val"],
+            "string_parameters": list(),
+            "boolean_parameters": list(),
+        }
+    }
+}
+
+
+def extract_params(configuration, section, params):
+    """
+    Fetch parameters values from a specific section of the configuration file
+    :param configuration:
+    :param section:
+    :param params:
+    :return:
+    """
+
+    parameters = dict()
+
+    # HELPERS
+    # ---------------------------------------------------------------
+
+    def add_param(k, v):
+        parameters[k] = v
+
+    def get_int_param(k):
+        return configuration.getint(section, k)
+
+    def get_float_param(k):
+        return configuration.getfloat(section, k)
+
+    def get_string_param(k):
+        return configuration.get(section, k)
+
+    def get_boolean_param(k):
+        return configuration.getboolean(section, k)
+
+    # ---------------------------------------------------------------
+
+    for int_param in params["int_parameters"]:
+        add_param(int_param, get_int_param(int_param))
+
+    for float_param in params["float_parameters"]:
+        add_param(float_param, get_float_param(float_param))
+
+    for string_param in params["string_parameters"]:
+        add_param(string_param, get_string_param(string_param))
+
+    for boolean_param in params["boolean_parameters"]:
+        add_param(boolean_param, get_boolean_param(boolean_param))
+
+    for cond_param in params["cond_parameters"]:
+
+        add_param(cond_param, get_boolean_param(cond_param))
+
+        if get_boolean_param(cond_param):
+
+            for int_param in params["cond_parameters"][cond_param]["int_parameters"]:
+                add_param(int_param, get_int_param(int_param))
+
+            for float_param in params["cond_parameters"][cond_param]["float_parameters"]:
+                add_param(float_param, get_float_param(float_param))
+
+            for string_param in params["cond_parameters"][cond_param]["string_parameters"]:
+                add_param(string_param, get_string_param(string_param))
+
+            for boolean_param in params["cond_parameters"][cond_param]["boolean_parameters"]:
+                add_param(boolean_param, get_boolean_param(boolean_param))
+
+    return parameters
+
 
 def get_training_parameters(configuration):
     """
@@ -22,41 +118,26 @@ def get_training_parameters(configuration):
     :return: a dictionary of parameters
     """
 
-    parameters = dict()
+    final_parameters = dict()
 
-    parameters["max_iterations"] = int(configuration["training"]["max_iterations"])
-    parameters["patience"] = int(configuration["training"]["patience"])
-    parameters["hidden_layer_size"] = int(configuration["training"]["hidden_layer_size"])
-    parameters["cpu_cores"] = int(configuration["training"]["cpu_cores"])
-    parameters["batch_size"] = int(configuration["training"]["batch_size"])
+    # Fetching general training parameters
 
-    parameters["dropout_rate"] = float(configuration["training"]["dropout_rate"])
+    general_parameters = extract_params(configuration, "training", GENERAL_PARAMETERS)
 
-    # Checking dropout rate boundaries
-    if parameters["dropout_rate"] >= 1.0 or parameters["dropout_rate"] < 0.0:
-        raise Exception("The dropout rate you specified is out of bound: {}".format(parameters["dropout_rate"]))
+    if general_parameters.get("model_type") not in MODEL_PARAMETERS:
+        raise Exception("The neural network model you specified does not exist")
 
-    # Checking dev metric
-    parameters["dev_metric"] = configuration["training"]["dev_metric"]
-    if parameters["dev_metric"] not in ["accuracy", "conll"]:
-        raise Exception("The 'dev' metric you specified does not exist: {}".format(parameters["dev_metric"]))
+    model_parameters = extract_params(configuration,
+                                      general_parameters.get("model_type"),
+                                      MODEL_PARAMETERS[general_parameters.get("model_type")])
 
-    parameters["char_hidden_layer_size"] = int(configuration["training"]["char_hidden_layer_size"])
-    parameters["use_char_embeddings"] = configuration.getboolean("training", "use_char_embeddings")
-    parameters["char_embedding_size"] = int(configuration["training"]["char_embedding_size"])
+    for k, v in general_parameters.items():
+        final_parameters[k] = v
 
-    parameters["trainable_word_embeddings"] = configuration.getboolean("training", "trainable_word_embeddings")
+    for k, v in model_parameters.items():
+        final_parameters[k] = v
 
-    # Optimization
-    parameters["opt_algo"] = configuration.get("training", "opt_algo")
-    if parameters["opt_algo"] not in OPT_ALGO:
-        raise Exception("The optimization algorithm you specified is not recognized: {}".format(parameters["opt_algo"]))
-
-    parameters["opt_gc_use"] = configuration.getboolean("training", "opt_gc_use")
-    parameters["opt_gc_val"] = configuration.getfloat("training", "opt_gc_val")
-    parameters["opt_lr"] = configuration.getfloat("training", "opt_lr")
-
-    return parameters
+    return final_parameters
 
 
 def parse_feature_columns(value):

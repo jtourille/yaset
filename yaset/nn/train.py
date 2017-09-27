@@ -261,6 +261,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = train_config["cpu_cores"]
     config_tf.inter_op_parallelism_threads = train_config["cpu_cores"]
+    config_tf.gpu_options.allow_growth = True
 
     logging.info("Building computation graph")
 
@@ -306,27 +307,18 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     # Network parameters for **kwargs usage
     model_args = {
 
+        **train_config,
+
         # Word embeddings
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
-        "trainable_word_embeddings": train_config["trainable_word_embeddings"],
 
-        # Character embeddings
-        "use_char_embeddings": train_config["use_char_embeddings"],
         "char_embedding_matrix_shape": [len(data_object.char_mapping), train_config["char_embedding_size"]],
-        "char_lstm_num_hidden": train_config["char_hidden_layer_size"],
 
         # Misc
         "pl_dropout": tf.placeholder(tf.float32),
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),
-        "lstm_hidden_size": train_config["hidden_layer_size"],
         "output_size": len(data_object.label_mapping),
-
-        # Optimization
-        "opt_algo": train_config["opt_algo"],
-        "opt_gc_use": train_config["opt_gc_use"],
-        "opt_gc_val": train_config["opt_gc_val"],
-        "opt_lr": train_config["opt_lr"]
     }
 
     # Creating main computation sub-graph
