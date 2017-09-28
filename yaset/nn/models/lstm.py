@@ -41,7 +41,10 @@ class BiLSTMCRF:
         self.use_char_embeddings = self.train_config["use_char_embeddings"]
         self.char_embedding_size = self.train_config["char_embedding_matrix_shape"][1]
         self.char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
-        self.global_counter = self.train_config["pl_global_counter"]
+
+        if not self.test:
+            self.global_counter = self.train_config["pl_global_counter"]
+
         self.output_size = self.train_config["output_size"]
         self.lstm_hidden_size = self.train_config["hidden_layer_size"]
 

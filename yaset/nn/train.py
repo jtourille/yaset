@@ -589,7 +589,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     sess.close()
 
 
-def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
+def apply_model(working_dir, model_dir, data_object: TestData, train_config, n_jobs=1):
     """
     Apply model on test data
     :param working_dir: current working directory
@@ -603,10 +603,6 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = n_jobs
     config_tf.inter_op_parallelism_threads = n_jobs
-
-    # Load config file used during training
-    config_train = configparser.ConfigParser()
-    config_train.read(os.path.join(model_dir, "config.ini"))
 
     # Load data characteristics from log file
     train_data_char = json.load(open(os.path.join(model_dir, "data_char.json")))
@@ -635,16 +631,16 @@ def apply_model(working_dir, model_dir, data_object: TestData, n_jobs=1):
 
     # Network parameters for **kwargs usage
     model_args = {
+
+        **train_config,
+
         "word_embedding_matrix_shape": train_data_char["embedding_matrix_shape"],
-        "trainable_word_embeddings": config_train.getboolean("training", "trainable_word_embeddings"),
 
         "pl_dropout": tf.placeholder(tf.float32),
-        "lstm_hidden_size": int(config_train["training"]["hidden_layer_size"]),
 
-        "use_char_embeddings": config_train.getboolean("training", "use_char_embeddings"),
         "char_embedding_matrix_shape": [len(data_object.char_mapping),
-                                        int(config_train.get("training", "char_embedding_size"))],
-        "char_lstm_num_hidden": int(config_train["training"]["char_hidden_layer_size"]),
+                                        train_config.get("char_embedding_size")],
+        "char_lstm_num_hidden": train_config.get("char_hidden_layer_size"),
 
         "output_size": len(train_data_char["label_mapping"])
     }

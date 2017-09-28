@@ -425,6 +425,12 @@ if __name__ == "__main__":
 
         logging.info("{} BEGIN - APPLYING MODEL {}".format("=" * 10, "=" * 36))
 
-        apply_model(current_working_directory, model_path, data)
+        # Load config file used during training
+        parsed_configuration = configparser.ConfigParser()
+        parsed_configuration.read(os.path.join(model_path, "config.ini"))
+
+        train_config = get_training_parameters(parsed_configuration)
+
+        apply_model(current_working_directory, model_path, data, train_config)
 
         log_message("END - APPLYING MODEL")
