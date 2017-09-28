@@ -127,7 +127,7 @@ def read_and_decode_test(filename_queue, feature_columns):
         return tensor_list
 
 
-def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, batch_size=None,
+def _build_train_pipeline(tfrecords_file_path, feature_columns, buckets=None, batch_size=None,
                           nb_instances=None):
     """
     Build the train pipeline. Sequences are grouped into buckets for faster training.
@@ -168,20 +168,21 @@ def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, batch_s
         for _ in feature_columns:
             shapes.append([None])
 
-        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=dtypes, shapes=shapes)
-        enqueue_op_padding_queue = padding_queue.enqueue(inputs)
-        batch = padding_queue.dequeue_many(batch_size)
+        if buckets:
+            # Bucketing according to bucket boundaries passed as arguments
+            length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
+                                                                          sorted(buckets),
+                                                                          num_threads=4,
+                                                                          capacity=32,
+                                                                          shapes=shapes,
+                                                                          dynamic_pad=True)
+        else:
 
-        queue_runner_list.append(tf.train.QueueRunner(padding_queue, [enqueue_op_padding_queue] * 4))
+            padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=dtypes, shapes=shapes)
+            enqueue_op_padding_queue = padding_queue.enqueue(inputs)
+            batch = padding_queue.dequeue_many(batch_size)
 
-        #
-        # # Bucketing according to bucket boundaries passed as arguments
-        # length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
-        #                                                               sorted(buckets),
-        #                                                               num_threads=4,
-        #                                                               capacity=32,
-        #                                                               shapes=shapes,
-        #                                                               dynamic_pad=True)
+            queue_runner_list.append(tf.train.QueueRunner(padding_queue, [enqueue_op_padding_queue] * 4))
 
         return queue_runner_list, [filename_queue, shuffle_queue], batch
 
@@ -281,11 +282,14 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     logging.debug("-> Creating coordinator")
     coord = tf.train.Coordinator()
 
-    # Computing bucket boundaries for bucketing
-    logging.debug("-> Computing bucket boundaries")
-    train_bucket_boundaries = compute_bucket_boundaries(
-        data_object.train_stats.sequence_lengths, train_config["batch_size"])
-    logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
+    train_bucket_boundaries = None
+
+    if train_config["bucket_use"]:
+        # Computing bucket boundaries for bucketing
+        logging.debug("-> Computing bucket boundaries")
+        train_bucket_boundaries = compute_bucket_boundaries(
+            data_object.train_stats.sequence_lengths, train_config["batch_size"])
+        logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
 
     # Fetching 'train' and 'dev' instance counts
     train_nb_examples = data_object.train_stats.nb_instances
@@ -299,8 +303,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     logging.debug("-> Building 'train' input pipeline")
     queue_runner_list_train, queue_list_train,\
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
-                                            train_bucket_boundaries,
                                             data_object.feature_columns,
+                                            buckets=train_bucket_boundaries,
                                             batch_size=train_config["batch_size"],
                                             nb_instances=train_nb_examples)
 
