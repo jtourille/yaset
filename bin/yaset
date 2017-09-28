@@ -35,7 +35,7 @@ GENERAL_PARAMETERS = {
     "int_parameters": ["max_iterations", "patience", "cpu_cores", "batch_size"],
     "float_parameters": ["opt_lr"],
     "string_parameters": ["model_type", "dev_metric", 'opt_algo'],
-    "boolean_parameters": ["trainable_word_embeddings", "store_matrices_on_gpu"],
+    "boolean_parameters": ["trainable_word_embeddings", "store_matrices_on_gpu", "bucket_use"],
     "cond_parameters": {
         "opt_gc_use": {
             "int_parameters": list(),
