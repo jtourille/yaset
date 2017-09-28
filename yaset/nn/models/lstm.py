@@ -41,47 +41,9 @@ class BiLSTMCRF:
         self.use_char_embeddings = self.train_config["use_char_embeddings"]
         self.char_embedding_size = self.train_config["char_embedding_matrix_shape"][1]
         self.char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
-
-        self.x_tokens_len = batch[1]
-        self.x_tokens_fw = batch[2]
-
-        self.x_tokens_bw = tf.reverse_sequence(self.x_tokens_fw, self.x_tokens_len, seq_dim=1)
-
+        self.global_counter = self.train_config["pl_global_counter"]
         self.output_size = self.train_config["output_size"]
-
-        # -----------------------------------------------------------
-        # Character embeddings
-
-        if self.use_char_embeddings:
-
-            # Fetching the char-related tensors from input batch
-            self.x_chars_fw = batch[3]
-            self.x_chars_len = batch[4]
-
-            # We reverse the sequence for the backward computation
-            # 1 - Reshape the matrix in [batch_size * sequence_length, character_length]
-            self.x_chars_fw_reshaped = tf.reshape(self.x_chars_fw,
-                                                  [tf.shape(self.x_chars_fw)[0] * tf.shape(self.x_chars_fw)[1],
-                                                   tf.shape(self.x_chars_fw)[2]])
-
-            # 2 - Flatten the character length tensor
-            self.x_chars_len_reshaped = tf.reshape(self.x_chars_len, [-1])
-
-            # 3 - Reverse the character sequences
-            self.x_chars_bw = tf.reverse_sequence(self.x_chars_fw_reshaped, self.x_chars_len_reshaped, seq_dim=1)
-
-            # 4 - Reshape back the matrix to [batch_size, sequence_length, character_length]
-            self.x_chars_bw = tf.reshape(self.x_chars_bw, [tf.shape(self.x_chars_fw)[0],
-                                                           tf.shape(self.x_chars_fw)[1],
-                                                           tf.shape(self.x_chars_fw)[2]])
-
-        # -----------------------------------------------------------
-
-        # Using a dummy placeholder for test set
-        if not test:
-            self.y = batch[5]
-        else:
-            self.y = tf.placeholder(tf.int32, shape=[None, None])
+        self.lstm_hidden_size = self.train_config["hidden_layer_size"]
 
         self.pl_dropout = self.train_config["pl_dropout"]
 
@@ -89,8 +51,17 @@ class BiLSTMCRF:
         if not self.reuse and not self.test:
             self.pl_emb = self.train_config["pl_emb"]
 
-        self.lstm_hidden_size = self.train_config["hidden_layer_size"]
-        self.output_size = self.train_config["output_size"]
+        self.x_tokens = batch[2]
+        self.x_tokens_len = batch[1]
+
+        self.x_chars = batch[3]
+        self.x_chars_len = batch[4]
+
+        # Using a dummy placeholder for test set
+        if not test:
+            self.y = batch[5]
+        else:
+            self.y = tf.placeholder(tf.int32, shape=[None, None])
 
         logging.debug("-> Creating matrices")
 
@@ -119,8 +90,9 @@ class BiLSTMCRF:
                 if self.use_char_embeddings:
                     self.C = tf.get_variable('embedding_matrix_chars',
                                              dtype=tf.float32,
-                                             initializer=self._get_weight(self.train_config["char_embedding_matrix_shape"][0],
-                                                                          self.train_config["char_embedding_matrix_shape"][1]),
+                                             initializer=self._get_weight(
+                                                 self.train_config["char_embedding_matrix_shape"][0],
+                                                 self.train_config["char_embedding_matrix_shape"][1]),
                                              trainable=True)
 
             if not self.reuse and not self.test:
@@ -130,20 +102,17 @@ class BiLSTMCRF:
 
             logging.debug("-> Embedding lookups")
 
-            self.embed_words_fw
-            self.embed_words_bw
+            self.embed_words
 
             if self.use_char_embeddings:
-                self.embed_chars_fw
-                self.embed_chars_bw
+                self.embed_chars
 
         if self.use_char_embeddings:
             self.char_representation
 
         logging.debug("-> Forward and Backward representations")
 
-        self.forward_representation
-        self.backward_representation
+        self.main_lstm
 
         logging.debug("-> Predictions")
 
@@ -155,46 +124,24 @@ class BiLSTMCRF:
             self.optimize
 
     @lazy_property
-    def embed_words_fw(self):
+    def embed_words(self):
         """
-        Forward embedding lookup
+        Word embedding lookup
         :return: tf.nn.embedding_lookup object
         """
 
-        embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_fw, name='lookup_tokens_fw')
+        embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens, name='lookup_tokens')
 
         return embed_words
 
     @lazy_property
-    def embed_words_bw(self):
+    def embed_chars(self):
         """
-        Backward embedding lookup
+        Character embedding lookup
         :return: tf.nn.embedding_lookup object
         """
 
-        embed_words = tf.nn.embedding_lookup(self.W, self.x_tokens_bw, name='lookup_tokens_bw')
-
-        return embed_words
-
-    @lazy_property
-    def embed_chars_fw(self):
-        """
-        Forward character lookup
-        :return: tf.nn.embedding_lookup object
-        """
-
-        embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_fw, name='lookup_chars_fw')
-
-        return embed_chars
-
-    @lazy_property
-    def embed_chars_bw(self):
-        """
-        Backward character lookup
-        :return: tf.nn.embedding_lookup object
-        """
-
-        embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars_bw, name='lookup_chars_bw')
+        embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars, name='lookup_chars')
 
         return embed_chars
 
@@ -205,122 +152,63 @@ class BiLSTMCRF:
         :return: character based representation [batch_size, seq_size, char_lstm_num_hidden * 2]
         """
 
-        # Retrieving character embeddings
-        embed_fw = self.embed_chars_fw
-        embed_bw = self.embed_chars_bw
-
         # Reshaping token lengths tensor []
         reshaped_len = tf.reshape(self.x_chars_len, [-1])
 
         # Reshaping character embedding batch for LSTM processing [batch_size * seq_length, char_length, char_emb_size]
-        # Forward
-        input_chars_fw = tf.reshape(embed_fw,
-                                    [tf.shape(embed_fw)[0] * tf.shape(embed_fw)[1],
-                                     tf.shape(embed_fw)[2],
-                                     self.char_embedding_size])
+        input_chars = tf.reshape(self.embed_chars,
+                                 [tf.shape(self.embed_chars)[0] * tf.shape(self.embed_chars)[1],
+                                  tf.shape(self.embed_chars)[2],
+                                  self.char_embedding_size])
 
-        # Backward
-        input_chars_bw = tf.reshape(embed_bw,
-                                    [tf.shape(embed_bw)[0] * tf.shape(embed_bw)[1],
-                                     tf.shape(embed_bw)[2],
-                                     self.char_embedding_size])
+        with tf.variable_scope('char_representation', reuse=self.reuse):
 
-        # Character LSTM forward pass
-        with tf.variable_scope('chars_forward'):
-            fw_cell_chars = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True, reuse=self.reuse)
+            lstm_cell_fw = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True)
+            lstm_cell_bw = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True)
 
-            outputs_fw_chars, states_fw_chars = tf.nn.dynamic_rnn(cell=fw_cell_chars,
-                                                                  inputs=input_chars_fw,
-                                                                  dtype=tf.float32,
-                                                                  sequence_length=reshaped_len)
-
-        # Character LSTM backward pass
-        with tf.variable_scope('chars_backward'):
-            bw_cell_chars = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True, reuse=self.reuse)
-
-            outputs_bw_chars, states_bw_chars = tf.nn.dynamic_rnn(cell=bw_cell_chars,
-                                                                  inputs=input_chars_bw,
-                                                                  dtype=tf.float32,
-                                                                  sequence_length=reshaped_len)
-
-        # Setting the 0 padding values to 1 to create the mask
-        len_clip = tf.clip_by_value(reshaped_len, 1, tf.shape(embed_fw)[2])
-
-        # Creating partition mask
-        partitions = tf.one_hot(len_clip - 1, depth=tf.shape(embed_fw)[2], dtype=tf.int32)
-
-        # Gathering outputs from forward and backward passes
-        select_fw = tf.dynamic_partition(outputs_fw_chars, partitions, 2)
-        select_bw = tf.dynamic_partition(outputs_bw_chars, partitions, 2)
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=lstm_cell_fw,
+                cell_bw=lstm_cell_bw,
+                dtype=tf.float32,
+                sequence_length=reshaped_len,
+                inputs=input_chars)
 
         # Concatenating forward and backward outputs
-        char_vector = tf.concat([select_fw[1], select_bw[1]], 1)
+        char_vector = tf.concat([states[0].h, states[1].h], 1)
 
         # Reshaping the output [batch_size, seq_len, char_lstm_num_hidden * 2]
         final_output = tf.reshape(char_vector,
-                                  [tf.shape(embed_fw)[0], tf.shape(embed_fw)[1], self.char_lstm_num_hidden * 2])
+                                  [tf.shape(self.embed_chars)[0], tf.shape(self.embed_chars)[1],
+                                   self.char_lstm_num_hidden * 2])
 
         return final_output
 
     @lazy_property
-    def forward_representation(self):
-        """
-        Build forward representation of the sequence
-        :return: forward LSTM output
-        """
+    def main_lstm(self):
 
         # Depending on the use of characters in the final representation
         if self.use_char_embeddings:
             # Concatenate forward word embedding and forward character embedding representations
-            fw_tensor = tf.concat([self.embed_words_fw, self.char_representation], 2)
+            input_tensor = tf.concat([self.embed_words, self.char_representation], 2)
         else:
             # Use only forward word embedding representation
-            fw_tensor = self.embed_words_fw
+            input_tensor = self.embed_words
 
-        # Building forward representation
-        with tf.variable_scope('forward_representation', reuse=self.reuse):
-            lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
+        input_tensor = tf.nn.dropout(input_tensor, 1.0 - self.pl_dropout)
 
-            # Applying dropout on input embeddings
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=1.0 - self.pl_dropout)
+        with tf.variable_scope('main_lstm', reuse=self.reuse):
 
-            outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
-                                               inputs=fw_tensor,
-                                               dtype=tf.float32,
-                                               sequence_length=self.x_tokens_len)
+            lstm_cell_fw = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
+            lstm_cell_bw = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
 
-        return outputs
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=lstm_cell_fw,
+                cell_bw=lstm_cell_bw,
+                dtype=tf.float32,
+                sequence_length=self.x_tokens_len,
+                inputs=input_tensor)
 
-    @lazy_property
-    def backward_representation(self):
-        """
-        Build forward representation of the sequence
-        :return: forward LSTM output
-        """
-
-        # Depending on the use of characters in the final representation
-        if self.use_char_embeddings:
-            # Concatenate backward word embedding and forward character embedding representations
-            # Reversing character based representation sequences
-            char_vector_bw = tf.reverse_sequence(self.char_representation, self.x_tokens_len, seq_dim=1)
-            bw_tensor = tf.concat([self.embed_words_bw, char_vector_bw], 2)
-        else:
-            # Use only backward word embedding representation
-            bw_tensor = self.embed_words_bw
-
-        # Building backward representation
-        with tf.variable_scope('backward_representation', reuse=self.reuse):
-            lstm_cell = tf.contrib.rnn.LSTMCell(self.lstm_hidden_size, state_is_tuple=True)
-
-            # Applying dropout on input embeddings
-            lstm_cell = tf.contrib.rnn.DropoutWrapper(lstm_cell, input_keep_prob=1.0 - self.pl_dropout)
-
-            outputs, state = tf.nn.dynamic_rnn(cell=lstm_cell,
-                                               inputs=bw_tensor,
-                                               dtype=tf.float32,
-                                               sequence_length=self.x_tokens_len)
-
-        return outputs
+        return tf.concat(outputs, 2)
 
     @lazy_property
     def prediction(self):
@@ -340,8 +228,7 @@ class BiLSTMCRF:
                                               initializer=self._get_bias(2 * self.lstm_hidden_size))
 
             # Preparing input tensor for last layer
-            tensor_bef_last_layer = tf.concat([self.forward_representation, self.backward_representation], 2)
-            tensor_bef_last_layer = tf.reshape(tensor_bef_last_layer, [-1, 2 * self.lstm_hidden_size])
+            tensor_bef_last_layer = tf.reshape(self.main_lstm, [-1, 2 * self.lstm_hidden_size])
 
             # Last layer computation (tanh activation)
             last_layer = tf.add(tf.matmul(tensor_bef_last_layer, last_layer_weights), last_layer_bias)
@@ -358,7 +245,7 @@ class BiLSTMCRF:
             prediction = tf.add(tf.matmul(last_layer, projection_weights), projections_bias)
 
             # Reshaping output [batch_size, batch_len, nb_labels]
-            prediction = tf.reshape(prediction, [-1, tf.shape(self.x_tokens_fw)[1], self.output_size])
+            prediction = tf.reshape(prediction, [-1, tf.shape(self.x_tokens)[1], self.output_size])
 
         return prediction
 
@@ -378,7 +265,7 @@ class BiLSTMCRF:
                                            self.y], back_prop=True, infer_shape=True, initializer=0.0)
 
         # Division by batch_size
-        loss_crf = tf.divide(tf.reduce_sum(out), tf.cast(tf.shape(self.x_tokens_fw)[0], dtype=tf.float32))
+        loss_crf = tf.divide(tf.reduce_sum(out), tf.cast(tf.shape(self.x_tokens)[0], dtype=tf.float32))
 
         return loss_crf
 
@@ -468,18 +355,39 @@ class BiLSTMCRF:
         :return:
         """
 
+        if self.train_config["opt_decay_use"]:
+
+            learning_rate = tf.train.exponential_decay(self.train_config["opt_lr"], self.global_counter,
+                                                       self.train_config["train_nb_instances"],
+                                                       self.train_config["opt_decay_rate"],
+                                                       staircase=True)
+        else:
+            learning_rate = self.train_config["opt_lr"]
+
         if self.train_config["opt_algo"] == "adam":
-            optimizer = tf.train.AdamOptimizer(self.train_config["opt_lr"])
+            optimizer = tf.train.AdamOptimizer(learning_rate)
         elif self.train_config["opt_algo"] == "sgd":
-            optimizer = tf.train.GradientDescentOptimizer(self.train_config["opt_lr"])
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         else:
             raise Exception("The optimization algorithm you specified does not exist")
 
         if self.train_config["opt_gc_use"]:
-            gvs = optimizer.compute_gradients(-self.loss_crf)
-            capped_gvs = [(tf.clip_by_value(grad, -self.train_config["opt_gs_val"], self.train_config["opt_gs_val"]),
-                           var) for grad, var in gvs]
-            train_op = optimizer.apply_gradients(capped_gvs)
+
+            if self.train_config["opt_gc_type"] == "clip_by_norm":
+                gradients, variables = zip(*optimizer.compute_gradients(-self.loss_crf))
+                gradients, _ = tf.clip_by_global_norm(gradients, self.train_config["opt_gs_val"])
+                train_op = optimizer.apply_gradients(zip(gradients, variables))
+
+            elif self.train_config["opt_gc_type"] == "clip_by_value":
+                gvs = optimizer.compute_gradients(-self.loss_crf)
+                capped_gvs = [(tf.clip_by_value(grad, -self.train_config["opt_gs_val"],
+                                                self.train_config["opt_gs_val"]), var) for grad, var in gvs]
+                train_op = optimizer.apply_gradients(capped_gvs)
+            else:
+                raise Exception("The gradient clipping method you specified does not exist: {}".format(
+                    self.train_config["opt_gc_type"]
+                ))
+
         else:
             train_op = optimizer.minimize(-self.loss_crf)
 

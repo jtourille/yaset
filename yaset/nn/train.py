@@ -156,24 +156,32 @@ def _build_train_pipeline(tfrecords_file_path, buckets, feature_columns, batch_s
             dtypes.append(tf.int32)
 
         # Random shuffle queue, allow for randomization of training instances (maximum size: 50% of nb. instances)
-        shuffle_queue = tf.RandomShuffleQueue(nb_instances//2, nb_instances//4, dtypes=dtypes)
+        shuffle_queue = tf.RandomShuffleQueue(nb_instances, nb_instances//2, dtypes=dtypes)
 
         # Enqueue and dequeue Ops + queue runner creation
         enqueue_op_shuffle_queue = shuffle_queue.enqueue(tensor_list)
         inputs = shuffle_queue.dequeue()
+
         queue_runner_list.append(tf.train.QueueRunner(shuffle_queue, [enqueue_op_shuffle_queue] * 4))
 
         shapes = [[], [], [None], [None, None], [None], [None]]
         for _ in feature_columns:
             shapes.append([None])
 
-        # Bucketing according to bucket boundaries passed as arguments
-        length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
-                                                                      sorted(buckets),
-                                                                      num_threads=4,
-                                                                      capacity=32,
-                                                                      shapes=shapes,
-                                                                      dynamic_pad=True)
+        padding_queue = tf.PaddingFIFOQueue(nb_instances, dtypes=dtypes, shapes=shapes)
+        enqueue_op_padding_queue = padding_queue.enqueue(inputs)
+        batch = padding_queue.dequeue_many(batch_size)
+
+        queue_runner_list.append(tf.train.QueueRunner(padding_queue, [enqueue_op_padding_queue] * 4))
+
+        #
+        # # Bucketing according to bucket boundaries passed as arguments
+        # length, batch = tf.contrib.training.bucket_by_sequence_length(inputs[1], inputs, batch_size,
+        #                                                               sorted(buckets),
+        #                                                               num_threads=4,
+        #                                                               capacity=32,
+        #                                                               shapes=shapes,
+        #                                                               dynamic_pad=True)
 
         return queue_runner_list, [filename_queue, shuffle_queue], batch
 
@@ -319,6 +327,9 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
         "pl_emb": tf.placeholder(tf.float32, [embedding_object.embedding_matrix.shape[0],
                                               embedding_object.embedding_matrix.shape[1]]),
         "output_size": len(data_object.label_mapping),
+
+        "train_nb_instances": train_nb_examples,
+        "pl_global_counter": tf.placeholder(tf.int32)
     }
 
     # Creating main computation sub-graph
@@ -368,6 +379,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
     iteration_number = 1
     train_counter = 0
+    train_counter_global = 0
 
     train_logger = TrainLogger()
     train_logger_dump_filename = os.path.join(os.path.abspath(working_dir), "train_stats.json")
@@ -508,7 +520,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
         # Setting dropout for learning (defined by user)
         params = {
-            model_args["pl_dropout"]: train_config["dropout_rate"]
+            model_args["pl_dropout"]: train_config["dropout_rate"],
+            model_args["pl_global_counter"]: train_counter_global
         }
 
         # Optimizing with one mini-batch
@@ -516,6 +529,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
         # Incrementing counter and computing completion
         train_counter += train_config["batch_size"]
+        train_counter_global += train_config["batch_size"]
         cur_percentage = (float(train_counter) / train_nb_examples) * 100
 
         # Logging training progress
