@@ -87,7 +87,7 @@ def extract_int_values(config_section, param_list):
 
     if param_list:
         for p in param_list:
-            params[p] = config_section.getint(p)
+            params[p] = int(config_section.get(p))
 
     return params
 
@@ -104,7 +104,7 @@ def extract_float_values(config_section, param_list):
 
     if param_list:
         for p in param_list:
-            params[p] = config_section.getfloat(p)
+            params[p] = float(config_section.get(p))
 
     return params
 
@@ -138,6 +138,6 @@ def extract_boolean_values(config_section, param_list):
 
     if param_list:
         for p in param_list:
-            params[p] = config_section.getboolean(p)
+            params[p] = bool(config_section.get(p))
 
     return params
