@@ -164,7 +164,7 @@ class BiLSTMCRF:
         input_chars = tf.reshape(self.embed_chars,
                                  [tf.shape(self.embed_chars)[0] * tf.shape(self.embed_chars)[1],
                                   tf.shape(self.embed_chars)[2],
-                                  char_lstm_num_hidden])
+                                  self.train_config["char_embedding_size"]])
 
         with tf.variable_scope('char_representation', reuse=self.reuse):
 
