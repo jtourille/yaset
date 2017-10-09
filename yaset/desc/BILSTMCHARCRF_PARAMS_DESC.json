@@ -1,0 +1,9 @@
+{
+  "int_parameters": ["hidden_layer_size"],
+  "float_parameters": ["dropout_rate"],
+  "true_cond_parameters": {
+    "use_char_embeddings": {
+      "int_parameters": ["char_hidden_layer_size", "char_embedding_size"]
+    }
+  }
+}

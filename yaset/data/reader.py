@@ -45,35 +45,46 @@ class StatsCorpus:
 
 class TrainData:
 
-    def __init__(self, train_data_file, dev_data_file=None, working_dir=None, dev_ratio=None, feature_columns=None,
-                 lower_input=None, replace_digits=None):
+    def __init__(self, working_dir=None, data_params=None):
 
         # Paths to tabulated data files
-        self.train_data_file = train_data_file
-        self.dev_data_file = dev_data_file
+        self.train_file_path = os.path.abspath(data_params.get("train_file_path"))
+
+        # Checking if train data file exists
+        if not os.path.isfile(self.train_file_path):
+            raise FileNotFoundError("The train file you specified does not exist: {}".format(self.train_file_path))
+
+        self.dev_file_use = data_params.get("dev_file_use")
+        self.dev_random_seed_use = data_params.get("dev_random_seed_use")
+        self.dev_random_seed_value = None
+        self.dev_ratio = None
+
+        if self.dev_file_use:
+            self.dev_file_path = os.path.abspath(data_params.get("dev_file_path"))
+
+            if not os.path.isfile(self.dev_file_path):
+                raise FileNotFoundError("The 'dev' file you specified does not exist: {}".format(
+                    self.dev_file_path
+                ))
+        else:
+            self.dev_ratio = data_params.get("dev_random_ratio")
+            if self.dev_ratio <= 0 or self.dev_ratio >= 1:
+                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(self.dev_ratio))
+
+            if self.dev_random_seed_use:
+                self.dev_random_seed_value = data_params.get("dev_random_seed_value")
 
         # Paths to current working directory
         self.working_dir = working_dir
 
-        # Percentage of documents to keep for development corpus in case there is no development data file
-        # This number should be between 0 and 1
-        self.dev_ratio = dev_ratio
-
-        self.feature_columns = feature_columns
-        self.lower_input = lower_input
-        self.replace_digits = replace_digits
+        # self.feature_columns = feature_columns
+        self.lower_input = data_params.get("preproc_lower_input")
+        self.replace_digits = data_params.get("replace_digits")
 
         self.singletons = None
 
-        # -----------------------------------------------------------
-
-        # Checking if train data file exists
-        if not os.path.isfile(self.train_data_file):
-            raise FileNotFoundError("The train file you specified does not exist: {}".format(self.train_data_file))
-
-        # Checking if dev data file exists
-        if self.dev_data_file and not os.path.isfile(self.dev_data_file):
-            raise FileNotFoundError("The dev file you specified does not exist: {}".format(self.dev_data_file))
+        self.feature_use = data_params.get("feature_use")
+        self.feature_columns = list()
 
         # -----------------------------------------------------------
 
@@ -108,17 +119,18 @@ class TrainData:
         :return: nothing
         """
 
-        if self.train_data_file:
-            logging.info("Checking train file: {}".format(os.path.basename(self.train_data_file)))
-            self._check_file(self.train_data_file, self.feature_columns)
+        if self.train_file_path:
+            logging.info("Checking train file: {}".format(os.path.basename(self.train_file_path)))
+            self._check_file(self.train_file_path, self.feature_columns)
 
-        if self.dev_data_file:
-            logging.info("Checking dev file: {}".format(os.path.basename(self.dev_data_file)))
-            self._check_file(self.dev_data_file, self.feature_columns)
+        if self.dev_file_path:
+            logging.info("Checking dev file: {}".format(os.path.basename(self.dev_file_path)))
+            self._check_file(self.dev_file_path, self.feature_columns)
 
-    def create_tfrecords_files(self, embedding_object, random_seed=None):
+    def create_tfrecords_files(self, embedding_object, oov_strategy=None, unk_token_rate=None):
         """
         Create 'train' and 'dev' TFRecords files
+        :param unk_token_rate:
         :param random_seed: random seed for train/dev splitting
         :param embedding_object: yaset embedding object to use for token IDs fetching
         :return: nothing
@@ -128,39 +140,46 @@ class TrainData:
 
         logging.debug("Lowercase: {}".format(self.lower_input))
         logging.debug("Replace digits: {}".format(self.replace_digits))
+        if oov_strategy == "replace":
+            logging.debug("OOV strategy: replace")
+            logging.debug("Unknown token replacement rate: {}".format(unk_token_rate))
 
         # Case where there is no dev data file
-        if self.train_data_file and not self.dev_data_file:
+        if not self.dev_file_use:
 
             # Fetching number of sequences in the 'train' file
-            sequence_nb_train = self._get_number_sequences(self.train_data_file)
+            sequence_nb_train = self._get_number_sequences(self.train_file_path)
 
             # Creating a list of sequence indexes based on the total number of sequences
             sequence_indexes = list(range(sequence_nb_train))
 
             # Dividing the index list into train and dev parts
-            train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio,
-                                                          random_state=random_seed)
+            if self.dev_random_seed_use:
+                train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio,
+                                                              random_state=self.dev_random_seed_value)
+            else:
+                train_indexes, dev_indexes = train_test_split(sequence_indexes, test_size=self.dev_ratio)
 
-            self._check_split(train_indexes, dev_indexes, self.train_data_file, self.train_data_file,
+            self._check_split(train_indexes, dev_indexes, self.train_file_path, self.train_file_path,
                               self.feature_columns)
 
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
-            logging.info("Fetching singleton list")
-            self.singletons = self._get_singletons(self.train_data_file, indexes=train_indexes,
-                                                   lower_input=self.lower_input, replace_digits=self.replace_digits)
-            logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
+            if oov_strategy == "replace":
+                logging.info("Fetching singleton list")
+                self.singletons = self._get_singletons(self.train_file_path, indexes=train_indexes,
+                                                       lower_input=self.lower_input, replace_digits=self.replace_digits)
+                logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
 
             logging.info("Building character mapping")
-            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
+            self.char_mapping = self._get_char_mapping(self.train_file_path, train_indexes,
                                                        replace_digits=self.replace_digits)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
-            if self.feature_columns:
+            if self.feature_use:
                 logging.info("Building attribute mapping")
-                self.feature_value_mapping = self._get_feature_value_mapping(self.train_data_file, self.feature_columns,
+                self.feature_value_mapping = self._get_feature_value_mapping(self.train_file_path, self.feature_columns,
                                                                              indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
                     logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
@@ -169,14 +188,15 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_file_path, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Creating TFRecords file for train instances...")
 
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
-                                       embedding_object, indexes=train_indexes, part="TRAIN")
+            self._convert_to_tfrecords(self.train_file_path, self.tfrecords_train_file,
+                                       embedding_object, indexes=train_indexes, part="TRAIN",
+                                       oov_strategy=oov_strategy, unk_token_rate=unk_token_rate)
 
             self.train_stats.log_stats()
 
@@ -185,8 +205,9 @@ class TrainData:
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
 
             logging.info("Creating TFRecords file for dev instances...")
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_dev_file,
-                                       embedding_object, indexes=dev_indexes, part="DEV")
+            self._convert_to_tfrecords(self.train_file_path, self.tfrecords_dev_file,
+                                       embedding_object, indexes=dev_indexes, part="DEV",
+                                       oov_strategy=oov_strategy, unk_token_rate=unk_token_rate)
 
             self.dev_stats.log_stats()
 
@@ -196,31 +217,32 @@ class TrainData:
 
         else:
 
-            sequence_nb_train = self._get_number_sequences(self.train_data_file)
-            sequence_nb_dev = self._get_number_sequences(self.dev_data_file)
+            sequence_nb_train = self._get_number_sequences(self.train_file_path)
+            sequence_nb_dev = self._get_number_sequences(self.dev_file_path)
 
             train_indexes = list(range(sequence_nb_train))
             dev_indexes = list(range(sequence_nb_dev))
 
-            self._check_split(train_indexes, dev_indexes, self.train_data_file, self.dev_data_file,
+            self._check_split(train_indexes, dev_indexes, self.train_file_path, self.dev_file_path,
                               self.feature_columns)
 
             self.train_stats.nb_instances = len(train_indexes)
             self.dev_stats.nb_instances = len(dev_indexes)
 
-            logging.info("Fetching singleton list")
-            self.singletons = self._get_singletons(self.train_data_file, indexes=train_indexes,
-                                                   lower_input=self.lower_input, replace_digits=self.replace_digits)
-            logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
+            if oov_strategy == "replace":
+                logging.info("Fetching singleton list")
+                self.singletons = self._get_singletons(self.train_file_path, indexes=train_indexes,
+                                                       lower_input=self.lower_input, replace_digits=self.replace_digits)
+                logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
 
             logging.info("Building character mapping")
-            self.char_mapping = self._get_char_mapping(self.train_data_file, train_indexes,
+            self.char_mapping = self._get_char_mapping(self.train_file_path, train_indexes,
                                                        replace_digits=self.replace_digits)
             logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
-            if self.feature_columns:
+            if self.feature_use:
                 logging.info("Building attribute mapping")
-                self.feature_value_mapping = self._get_feature_value_mapping(self.train_data_file, self.feature_columns,
+                self.feature_value_mapping = self._get_feature_value_mapping(self.train_file_path, self.feature_columns,
                                                                              indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
                     logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
@@ -229,14 +251,15 @@ class TrainData:
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
-            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_data_file, train_indexes)
+            self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_file_path, train_indexes)
             logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Creating TFRecords file for train instances...")
 
-            self._convert_to_tfrecords(self.train_data_file, self.tfrecords_train_file,
-                                       embedding_object, indexes=train_indexes, part="TRAIN")
+            self._convert_to_tfrecords(self.train_file_path, self.tfrecords_train_file,
+                                       embedding_object, indexes=train_indexes, part="TRAIN",
+                                       oov_strategy=oov_strategy, unk_token_rate=unk_token_rate)
 
             self.train_stats.log_stats()
 
@@ -245,8 +268,9 @@ class TrainData:
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
 
             logging.info("Creating TFRecords file for dev instances...")
-            self._convert_to_tfrecords(self.dev_data_file, self.tfrecords_dev_file,
-                                       embedding_object, indexes=dev_indexes, part="DEV")
+            self._convert_to_tfrecords(self.dev_file_path, self.tfrecords_dev_file,
+                                       embedding_object, indexes=dev_indexes, part="DEV",
+                                       oov_strategy=oov_strategy, unk_token_rate=unk_token_rate)
 
             self.dev_stats.log_stats()
 
@@ -254,7 +278,8 @@ class TrainData:
             logging.info("* Dumping unknown word list to file")
             self.dev_stats.dump_unknown_tokens(self.unknown_tokens_dev_file)
 
-    def _convert_to_tfrecords(self, data_file, target_tfrecords_file_path, embedding_object, indexes=None, part=None):
+    def _convert_to_tfrecords(self, data_file, target_tfrecords_file_path, embedding_object, indexes=None, part=None,
+                              oov_strategy=None, unk_token_rate=None):
         """
         Create a TFRecords file
         :param data_file: source data files containing the sequences to write to the TFRecords file
@@ -284,10 +309,14 @@ class TrainData:
                         if indexes:
                             if sequence_id in indexes:
                                 self._write_example_to_file(writer, tokens, embedding_object,
-                                                            "{}-{}".format(part, sequence_id), part)
+                                                            "{}-{}".format(part, sequence_id), part,
+                                                            oov_strategy=oov_strategy,
+                                                            unk_token_rate=unk_token_rate)
                         else:
                             self._write_example_to_file(writer, tokens, embedding_object,
-                                                        "{}-{}".format(part, sequence_id), part)
+                                                        "{}-{}".format(part, sequence_id), part,
+                                                        oov_strategy=oov_strategy,
+                                                        unk_token_rate=unk_token_rate)
 
                         tokens.clear()
                         sequence_id += 1
@@ -303,14 +332,19 @@ class TrainData:
                 if indexes:
                     if sequence_id in indexes:
                         self._write_example_to_file(writer, tokens, embedding_object,
-                                                    "{}-{}".format(part, sequence_id), part)
+                                                    "{}-{}".format(part, sequence_id), part,
+                                                    oov_strategy=oov_strategy,
+                                                    unk_token_rate=unk_token_rate)
                 else:
                     self._write_example_to_file(writer, tokens, embedding_object,
-                                                "{}-{}".format(part, sequence_id), part)
+                                                "{}-{}".format(part, sequence_id), part,
+                                                oov_strategy=oov_strategy,
+                                                unk_token_rate=unk_token_rate)
 
         writer.close()
 
-    def _write_example_to_file(self, writer, tokens, embedding_object, example_id, part):
+    def _write_example_to_file(self, writer, tokens, embedding_object, example_id, part, oov_strategy=None,
+                               unk_token_rate=None):
         """
         Write an example to a TFRecords file
         :param writer: opened TFRecordWriter
@@ -354,10 +388,11 @@ class TrainData:
 
             token_id = embedding_object.word_mapping.get(token_str)
 
-            if token_str in self.singletons and part == "TRAIN":
-                if random.random() < 0.5:
-                    token_id = embedding_object.word_mapping.get(embedding_object.embedding_unknown_token_id)
-                    self.train_stats.replaced_singletons += 1
+            if oov_strategy == "replace":
+                if token_str in self.singletons and part == "TRAIN":
+                    if random.random() < unk_token_rate:
+                        token_id = embedding_object.word_mapping.get(embedding_object.embedding_oov_map_token_id)
+                        self.train_stats.replaced_singletons += 1
 
             token_size = 0
             for char in token[0]:
@@ -378,7 +413,7 @@ class TrainData:
                 self.dev_stats.nb_words += 1
 
             if not token_id:
-                token_id = embedding_object.word_mapping.get(embedding_object.embedding_unknown_token_id)
+                token_id = embedding_object.word_mapping.get(embedding_object.embedding_oov_map_token_id)
                 if part == "TRAIN":
                     self.train_stats.unknown_words.append(token[0])
                 else:
@@ -458,7 +493,7 @@ class TrainData:
                 if k not in attributes_train[col]:
                     logging.info("One feature value from col. #{} in dev corpus is not present in train "
                                  "corpus: {}".format(col, k))
-                    if self.dev_data_file:
+                    if self.dev_file_path:
                         logging.info("Check your input files and relaunch yaset")
                     else:
                         logging.info("Try to relaunch yaset after changing the random seed")

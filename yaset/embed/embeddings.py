@@ -8,19 +8,18 @@ from ..error import UnknownTokenAlreadyExists
 
 class Embeddings:
 
-    def __init__(self, embedding_file_path, embedding_unknown_token_id):
+    def __init__(self, embedding_file_path, embedding_oov_map_token_id):
 
         # Gensim model file path
         self.embedding_file_path = os.path.abspath(embedding_file_path)
+
+        self.embedding_oov_map_token_id = embedding_oov_map_token_id
 
         # Word-id mapping
         self.word_mapping = dict()
 
         # Embedding matrix
         self.embedding_matrix = None
-
-        # Unknown vector ID
-        self.embedding_unknown_token_id = embedding_unknown_token_id
 
     def load_embedding(self):
 
@@ -32,7 +31,7 @@ class Embeddings:
         :return: nothing
         """
 
-        if self.embedding_unknown_token_id:
+        if self.embedding_oov_map_token_id:
             raise Exception("The unknown token already exists")
 
         logging.debug("-> Creating random vector")
@@ -46,9 +45,10 @@ class Embeddings:
 
         # Creating a mapping for the unknown token vector
         logging.debug("-> Creating a mapping for the unknown token")
-        self.embedding_unknown_token_id = self._generate_unknown_token_id()
-        logging.debug("-> Unknown vector ID: {}".format(self.embedding_unknown_token_id))
-        self.word_mapping[self.embedding_unknown_token_id] = self.embedding_matrix.shape[0] - 1
+        self.embedding_oov_map_token_id = self._generate_unknown_token_id()
+
+        logging.debug("-> Unknown vector ID: {}".format(self.embedding_oov_map_token_id))
+        self.word_mapping[self.embedding_oov_map_token_id] = self.embedding_matrix.shape[0] - 1
 
     def _generate_unknown_token_id(self):
 

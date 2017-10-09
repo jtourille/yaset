@@ -8,142 +8,12 @@ import shutil
 import sys
 import time
 
+import pkg_resources
+
 from yaset.data.reader import TrainData, TestData
+from yaset.helpers.config import extract_params
 from yaset.nn.train import train_model, apply_model
 from yaset.tools import ensure_dir
-
-OPT_ALGO = ["sgd", "adam"]
-
-MODEL_PARAMETERS = {
-    "bilstm-char-crf": {
-        "int_parameters": ["hidden_layer_size"],
-        "float_parameters": ["dropout_rate"],
-        "string_parameters": list(),
-        "boolean_parameters": list(),
-        "cond_parameters": {
-            "use_char_embeddings": {
-                "int_parameters": ["char_hidden_layer_size", "char_embedding_size"],
-                "float_parameters": list(),
-                "string_parameters": list(),
-                "boolean_parameters": list(),
-            }
-        }
-    }
-}
-
-GENERAL_PARAMETERS = {
-    "int_parameters": ["max_iterations", "patience", "cpu_cores", "batch_size"],
-    "float_parameters": ["opt_lr"],
-    "string_parameters": ["model_type", "dev_metric", 'opt_algo'],
-    "boolean_parameters": ["trainable_word_embeddings", "store_matrices_on_gpu", "bucket_use"],
-    "cond_parameters": {
-        "opt_gc_use": {
-            "int_parameters": list(),
-            "float_parameters": ["opt_gs_val"],
-            "string_parameters": ["opt_gc_type"],
-            "boolean_parameters": list(),
-        },
-        "opt_decay_use": {
-            "int_parameters": list(),
-            "float_parameters": ["opt_decay_rate"],
-            "string_parameters": list(),
-            "boolean_parameters": list(),
-        }
-    }
-}
-
-
-def extract_params(configuration, section, params):
-    """
-    Fetch parameters values from a specific section of the configuration file
-    :param configuration:
-    :param section:
-    :param params:
-    :return:
-    """
-
-    parameters = dict()
-
-    # HELPERS
-    # ---------------------------------------------------------------
-
-    def add_param(k, v):
-        parameters[k] = v
-
-    def get_int_param(k):
-        return configuration.getint(section, k)
-
-    def get_float_param(k):
-        return configuration.getfloat(section, k)
-
-    def get_string_param(k):
-        return configuration.get(section, k)
-
-    def get_boolean_param(k):
-        return configuration.getboolean(section, k)
-
-    # ---------------------------------------------------------------
-
-    for int_param in params["int_parameters"]:
-        add_param(int_param, get_int_param(int_param))
-
-    for float_param in params["float_parameters"]:
-        add_param(float_param, get_float_param(float_param))
-
-    for string_param in params["string_parameters"]:
-        add_param(string_param, get_string_param(string_param))
-
-    for boolean_param in params["boolean_parameters"]:
-        add_param(boolean_param, get_boolean_param(boolean_param))
-
-    for cond_param in params["cond_parameters"]:
-
-        add_param(cond_param, get_boolean_param(cond_param))
-
-        if get_boolean_param(cond_param):
-
-            for int_param in params["cond_parameters"][cond_param]["int_parameters"]:
-                add_param(int_param, get_int_param(int_param))
-
-            for float_param in params["cond_parameters"][cond_param]["float_parameters"]:
-                add_param(float_param, get_float_param(float_param))
-
-            for string_param in params["cond_parameters"][cond_param]["string_parameters"]:
-                add_param(string_param, get_string_param(string_param))
-
-            for boolean_param in params["cond_parameters"][cond_param]["boolean_parameters"]:
-                add_param(boolean_param, get_boolean_param(boolean_param))
-
-    return parameters
-
-
-def get_training_parameters(configuration):
-    """
-    Fetch training parameters from a configparser object
-    :param configuration: configparser object
-    :return: a dictionary of parameters
-    """
-
-    final_parameters = dict()
-
-    # Fetching general training parameters
-
-    general_parameters = extract_params(configuration, "training", GENERAL_PARAMETERS)
-
-    if general_parameters.get("model_type") not in MODEL_PARAMETERS:
-        raise Exception("The neural network model you specified does not exist")
-
-    model_parameters = extract_params(configuration,
-                                      general_parameters.get("model_type"),
-                                      MODEL_PARAMETERS[general_parameters.get("model_type")])
-
-    for k, v in general_parameters.items():
-        final_parameters[k] = v
-
-    for k, v in model_parameters.items():
-        final_parameters[k] = v
-
-    return final_parameters
 
 
 def parse_feature_columns(value):
@@ -186,10 +56,15 @@ if __name__ == "__main__":
 
     # 'Apply' subparser used to apply a pretrained model
     parser_test = subparsers.add_parser('APPLY', help="Apply model on test data")
-    parser_test.add_argument("--model_path", help="Path to the model", dest="model_path", type=str, required=True)
-    parser_test.add_argument("--input_file", help="Path to the tabulated test file", dest="input_file", required=True)
-    parser_test.add_argument("--working_dir", help="Path where a working directory will be created", dest="working_dir",
+    parser_test.add_argument("--model-path", help="Path to the model", dest="model_path", type=str, required=True)
+    parser_test.add_argument("--input-file", help="Path to the tabulated test file", dest="input_file", required=True)
+    parser_test.add_argument("--working-dir", help="Path where a working directory will be created", dest="working_dir",
                              required=True)
+
+    parser_config = subparsers.add_parser('CHECK-CONFIG', help="Performs configuration file checking."
+                                                               "Error will be raised if value are not correctly set.")
+    parser_config.add_argument("--config", help="Configuration file (.ini format)", dest="config", type=str,
+                               required=True)
 
     args = parser.parse_args()
 
@@ -217,7 +92,42 @@ if __name__ == "__main__":
     ch.setFormatter(log_format)
     log.addHandler(ch)
 
-    if args.subparser_name == "LEARN":
+    if args.subparser_name == "CHECK-CONFIG":
+
+        # Check if config file does exist
+        if not os.path.isfile(os.path.abspath(args.config)):
+            raise FileNotFoundError("The configuration file you specified does not exist: {}".format(
+                os.path.abspath(args.config)
+            ))
+
+        parsed_configuration = configparser.ConfigParser(allow_no_value=True)
+        parsed_configuration.read(os.path.abspath(args.config))
+
+        TRAINING_PARAMS_FILE = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
+        DATA_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
+        BILSTMCHARCRF_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/BILSTMCHARCRF_PARAMS_DESC.json')
+
+        log_message("DATA PARAMETERS")
+
+        data_params = extract_params(parsed_configuration["data"], DATA_PARAMS_DESC_FILE)
+        for k, v in sorted(data_params.items()):
+            logging.info("{}: {}".format(k, v))
+
+        log_message("TRAINING PARAMETERS")
+
+        training_params = extract_params(parsed_configuration["training"], TRAINING_PARAMS_FILE)
+        for k, v in sorted(training_params.items()):
+            logging.info("{}: {}".format(k, v))
+
+        if training_params["model_type"] == "bilstm-char-crf":
+            log_message("BILSTMCHARCRF MODEL PARAMETERS")
+            bilstm_params = extract_params(parsed_configuration["bilstm-char-crf"], BILSTMCHARCRF_PARAMS_DESC_FILE)
+            for k, v in sorted(bilstm_params.items()):
+                logging.info("{}: {}".format(k, v))
+
+        logging.info("Everything seems fine with your configuration file, you are ready to take off")
+
+    elif args.subparser_name == "LEARN":
 
         # Check if config file does exist
         if not os.path.isfile(os.path.abspath(args.config)):
@@ -229,15 +139,27 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
-        # Checking if the top working dir specified in the configuration exists
-        if not os.path.isdir(os.path.abspath(parsed_configuration["data"]["top_working_dir"])):
+        # Loading parameter description files
+        TRAINING_PARAMS_FILE = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
+        DATA_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
+        BILSTMCHARCRF_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/BILSTMCHARCRF_PARAMS_DESC.json')
+
+        data_params = extract_params(parsed_configuration["data"], DATA_PARAMS_DESC_FILE)
+        training_params = extract_params(parsed_configuration["training"], TRAINING_PARAMS_FILE)
+        if training_params["model_type"] == "bilstm-char-crf":
+            model_params = extract_params(parsed_configuration["bilstm-char-crf"], BILSTMCHARCRF_PARAMS_DESC_FILE)
+        else:
+            raise Exception("The model type you specified does not exist: {}".format(training_params["model_type"]))
+
+        # Checking if the working directory specified in the configuration exists
+        if not os.path.isdir(os.path.abspath(data_params.get("working_dir"))):
             raise NotADirectoryError("The top working directory you specified does not exist: {}".format(
-                os.path.abspath(parsed_configuration["data"]["top_working_dir"])
+                os.path.abspath(data_params.get("working_dir"))
             ))
 
         # Creating the current working directory based on the top working directory
         current_working_directory = os.path.join(
-            os.path.abspath(parsed_configuration["data"]["top_working_dir"]),
+            os.path.abspath(data_params.get("working_dir")),
             "yaset-learn-{}".format(timestamp)
         )
         ensure_dir(current_working_directory)
@@ -251,52 +173,21 @@ if __name__ == "__main__":
         fh.setFormatter(log_format)
         log.addHandler(fh)
 
-        # Setting some variables
-        train_file_path = os.path.abspath(parsed_configuration["data"]["train_file_path"])
-
         # -----------------------------------------------------------
-        # DEV FILE
-
-        dev_file_path = None
-        dev_ratio = None
-        dev_random_seed = None
-
-        # If there is a 'dev' file provided, check if the file does exist
-        if parsed_configuration.getboolean("data", "use_dev_file"):
-            dev_file_path = os.path.abspath(parsed_configuration["data"]["dev_file_path"])
-
-            if not os.path.isfile(dev_file_path):
-                raise FileNotFoundError("The 'dev' file you specified doesn't exist: {}".format(
-                    dev_file_path
-                ))
-
-        # If no 'dev' file is provided, fetch the train/dev ratio and check is it is between 0 and 1
-        if not dev_file_path:
-            dev_ratio = float(parsed_configuration["data"]["dev_ratio"])
-
-            if dev_ratio <= 0 or dev_ratio >= 1:
-                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(dev_ratio))
-
-        # -----------------------------------------------------------
-        # FEATURES
+        # FEATURES - NOT FULLY IMPLEMENTED YET
 
         feature_columns = list()
-
-        if parsed_configuration.getboolean("data", "use_features"):
-            feature_columns = parse_feature_columns(parsed_configuration["data"]["feature_columns"])
+        #
+        # if parsed_configuration.getboolean("data", "use_features"):
+        #     feature_columns = parse_feature_columns(parsed_configuration["data"]["feature_columns"])
 
         # -----------------------------------------------------------
         # LOADING AND CHECKING DATA FILES
 
         log_message("BEGIN - LOADING AND CHECKING DATA FILES")
 
-        data_lower_input = parsed_configuration.getboolean("data", "lower_input")
-        data_replace_digits = parsed_configuration.getboolean("data", "replace_digits")
-
         # Creating data object
-        data = TrainData(train_file_path, dev_data_file=dev_file_path, working_dir=current_working_directory,
-                         dev_ratio=dev_ratio, feature_columns=feature_columns, lower_input=data_lower_input,
-                         replace_digits=data_replace_digits)
+        data = TrainData(working_dir=current_working_directory, data_params=data_params)
 
         # Checking file format
         data.check_input_files()
@@ -308,7 +199,7 @@ if __name__ == "__main__":
 
         log_message("BEGIN - EMBEDDING LOADING AND PREPROCESSING")
 
-        embedding_model_type = parsed_configuration["data"]["embedding_model_type"]
+        embedding_model_type = data_params.get("embedding_model_type")
 
         if embedding_model_type is not "random":
             # Case where the model type is not random
@@ -316,7 +207,7 @@ if __name__ == "__main__":
             logging.info("Model type: {}".format(embedding_model_type))
 
             # Checking if the embedding model path does exist
-            embedding_file_path = os.path.abspath(parsed_configuration["data"]["embedding_model_path"])
+            embedding_file_path = os.path.abspath(data_params.get("embedding_model_path"))
 
             if not os.path.isfile(embedding_file_path):
                 raise FileNotFoundError("The embedding file you specified doesn't exist: {}".format(
@@ -325,29 +216,43 @@ if __name__ == "__main__":
 
             logging.info("File path: {}".format(embedding_file_path))
 
-            embedding_map_unknown = parsed_configuration.getboolean("data", "map_unknown_token")
-            embedding_unknown_item_id = None
-            if embedding_map_unknown:
-                embedding_unknown_item_id = parsed_configuration.get("data", "unknown_token_id")
+            embedding_oov_strategy = data_params.get("embedding_oov_strategy")
+            embedding_oov_map_token_id = None
+            embedding_oov_replace_rate = None
+
+            if embedding_oov_strategy == "map":
+                embedding_oov_map_token_id = data_params.get("embedding_oov_map_token_id")
+
+            elif embedding_oov_strategy == "replace":
+                embedding_oov_replace_rate = data_params.get("embedding_oov_replace_rate")
+
+            elif embedding_oov_strategy == "none":
+                pass
+
+            else:
+                raise Exception("The OOV strategy you specified is not recognized: {}".format(embedding_oov_strategy))
 
             # Dynamic loading of embedding module. Allow to write custom modules for specific model formats.
             logging.info("Creating embedding object")
             embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
             embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
-            embedding_object = embedding_class(embedding_file_path, embedding_unknown_item_id)
+            embedding_object = embedding_class(embedding_file_path, embedding_oov_map_token_id)
 
             # Loading embedding matrix into embedding object
             logging.info("Loading matrix")
             embedding_object.load_embedding()
 
-            if not embedding_map_unknown:
-                # Building unknown token vector based on embedding matrix
+            if embedding_oov_strategy == "replace":
                 logging.info("Building unknown token vector")
                 embedding_unknown_item_id = embedding_object.build_unknown_token()
-            else:
+
+            elif embedding_oov_strategy == "map":
                 logging.info("Unknown token vector already exists, skipping building new one (id={})".format(
-                    embedding_unknown_item_id
+                    embedding_oov_map_token_id
                 ))
+
+            elif embedding_oov_strategy == "none":
+                logging.info("No unknown token vector is build")
 
         else:
             # Random embedding will be supported in a later release
@@ -357,23 +262,18 @@ if __name__ == "__main__":
 
         log_message("BEGIN - CREATING TFRECORDS FILES")
 
-        if parsed_configuration.getboolean("data", "dev_use_random_seed") and \
-                not parsed_configuration.getboolean("data", "use_dev_file"):
-            dev_random_seed = parsed_configuration.getint("data", "dev_random_seed")
-
-        data.create_tfrecords_files(embedding_object, random_seed=dev_random_seed)
+        data.create_tfrecords_files(embedding_object, oov_strategy=embedding_oov_strategy,
+                                    unk_token_rate=embedding_oov_replace_rate)
 
         log_message("END - CREATING TFRECORDS FILES")
 
         log_message("BEGIN - LEARNING MODEL")
 
-        train_config = get_training_parameters(parsed_configuration)
-
         logging.debug("Current training parameters")
-        for k, v in train_config.items():
+        for k, v in training_params.items():
             logging.debug("* {} = {}".format(k, v))
 
-        train_model(current_working_directory, embedding_object, data, train_config)
+        train_model(current_working_directory, embedding_object, data, training_params, model_params)
 
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
         shutil.copy(os.path.abspath(args.config), target_model_configuration_path)

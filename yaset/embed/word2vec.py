@@ -29,7 +29,7 @@ class Word2VecEmbeddings(Embeddings):
 
         # Creating token-id mapping
         logging.debug("-> Creating word-id mapping")
-        for i, item in enumerate(gensim_obj.wv.index2word):
+        for i, item in enumerate(gensim_obj.wv.index2word, start=1):
             self.word_mapping[item] = i
 
         logging.debug("-> Creating padding vector (index=0)")

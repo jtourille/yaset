@@ -1,4 +1,3 @@
-import configparser
 import json
 import logging
 import math
@@ -265,11 +264,11 @@ def _build_test_pipeline(tfrecords_file_path, feature_columns, batch_size=None, 
         return queue_runner_list, [filename_queue, padding_queue], batch
 
 
-def train_model(working_dir, embedding_object, data_object: TrainData, train_config):
+def train_model(working_dir, embedding_object, data_object: TrainData, train_params, model_params):
 
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
-    config_tf.intra_op_parallelism_threads = train_config["cpu_cores"]
-    config_tf.inter_op_parallelism_threads = train_config["cpu_cores"]
+    config_tf.intra_op_parallelism_threads = train_params["cpu_cores"]
+    config_tf.inter_op_parallelism_threads = train_params["cpu_cores"]
     config_tf.gpu_options.allow_growth = True
 
     logging.info("Building computation graph")
@@ -284,11 +283,11 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
     train_bucket_boundaries = None
 
-    if train_config["bucket_use"]:
+    if train_params["bucket_use"]:
         # Computing bucket boundaries for bucketing
         logging.debug("-> Computing bucket boundaries")
         train_bucket_boundaries = compute_bucket_boundaries(
-            data_object.train_stats.sequence_lengths, train_config["batch_size"])
+            data_object.train_stats.sequence_lengths, train_params["batch_size"])
         logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
 
     # Fetching 'train' and 'dev' instance counts
@@ -305,7 +304,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
                                             data_object.feature_columns,
                                             buckets=train_bucket_boundaries,
-                                            batch_size=train_config["batch_size"],
+                                            batch_size=train_params["batch_size"],
                                             nb_instances=train_nb_examples)
 
     # Building 'dev' input pipeline sub-graph
@@ -313,18 +312,20 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     queue_runner_list_dev, queue_list_dev,\
         batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
                                         data_object.feature_columns,
-                                        batch_size=train_config["batch_size"],
+                                        batch_size=train_params["batch_size"],
                                         nb_instances=dev_nb_examples)
 
     # Network parameters for **kwargs usage
     model_args = {
 
-        **train_config,
+        # Train and model params
+        **train_params,
+        **model_params,
 
-        # Word embeddings
+        # Embedding shapes
         "word_embedding_matrix_shape": embedding_object.embedding_matrix.shape,
-
-        "char_embedding_matrix_shape": [len(data_object.char_mapping), train_config["char_embedding_size"]],
+        "char_count": len(data_object.char_mapping),
+        # "char_embedding_matrix_shape": [len(data_object.char_mapping), model_params["char_embedding_size"]],
 
         # Misc
         "pl_dropout": tf.placeholder(tf.float32),
@@ -374,10 +375,10 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
     # Computing the 5% threeshold for logging
     display_every_n_train = math.ceil((train_nb_examples //
-                                       train_config["batch_size"]) * 0.05) * train_config["batch_size"]
+                                       train_params["batch_size"]) * 0.05) * train_params["batch_size"]
 
     display_every_n_dev = math.ceil((dev_nb_examples //
-                                     train_config["batch_size"]) * 0.05) * train_config["batch_size"]
+                                     train_params["batch_size"]) * 0.05) * train_params["batch_size"]
 
     logging.info("Zajiganié !")
 
@@ -389,7 +390,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
     train_logger_dump_filename = os.path.join(os.path.abspath(working_dir), "train_stats.json")
 
     # Looping until max iteration is reached
-    while iteration_number <= train_config["max_iterations"]:
+    while iteration_number <= train_params["max_iterations"]:
 
         # Resetting the counter if an iteration has been completed
         if train_counter >= train_nb_examples:
@@ -417,7 +418,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                 x_id, x_len, y_pred, y_target = sess.run([batch_dev[0], batch_dev[1], model_dev.prediction,
                                                           batch_dev[5]], feed_dict=params)
 
-                dev_counter += train_config["batch_size"]
+                dev_counter += train_params["batch_size"]
                 cur_percentage = (float(dev_counter) / dev_nb_examples) * 100
 
                 for seq_id_, seq_len_, unary_scores_, y_target_ in zip(x_id, x_len, y_pred, y_target):
@@ -482,14 +483,14 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
 
             accuracy = accuracy_score(gs_labels, pred_labels)
 
-            if train_config["dev_metric"] == "accuracy":
+            if train_params["dev_metric"] == "accuracy":
 
                 logging.info("Accuracy: {}".format(accuracy))
                 logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
 
                 score = accuracy
 
-            elif train_config["dev_metric"] == "conll":
+            elif train_params["dev_metric"] == "conll":
 
                 precision, recall, f1 = conll_evaluation(metric_payload)
 
@@ -501,7 +502,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                 score = f1
 
             else:
-                raise Exception("The 'dev' metric you specified does not exist: {}".format(train_config["dev_metric"]))
+                raise Exception("The 'dev' metric you specified does not exist: {}".format(train_params["dev_metric"]))
 
             logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
 
@@ -518,13 +519,13 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
                 _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
 
             # Quitting main loop if patience is reached
-            if train_logger.check_patience(train_config["patience"]):
+            if train_logger.check_patience(train_params["patience"]):
                 logging.info("Patience reached, quitting main loop")
                 break
 
         # Setting dropout for learning (defined by user)
         params = {
-            model_args["pl_dropout"]: train_config["dropout_rate"],
+            model_args["pl_dropout"]: model_params["dropout_rate"],
             model_args["pl_global_counter"]: train_counter_global
         }
 
@@ -532,8 +533,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_con
         _, loss = sess.run([model_train.optimize, model_train.loss_crf], feed_dict=params)
 
         # Incrementing counter and computing completion
-        train_counter += train_config["batch_size"]
-        train_counter_global += train_config["batch_size"]
+        train_counter += train_params["batch_size"]
+        train_counter_global += train_params["batch_size"]
         cur_percentage = (float(train_counter) / train_nb_examples) * 100
 
         # Logging training progress

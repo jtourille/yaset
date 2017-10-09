@@ -39,8 +39,8 @@ class BiLSTMCRF:
             self.train_config[k] = v
 
         self.use_char_embeddings = self.train_config["use_char_embeddings"]
-        self.char_embedding_size = self.train_config["char_embedding_matrix_shape"][1]
-        self.char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
+        # self.char_embedding_size = self.train_config["char_embedding_matrix_shape"][1]
+        # self.char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
 
         if not self.test:
             self.global_counter = self.train_config["pl_global_counter"]
@@ -94,8 +94,8 @@ class BiLSTMCRF:
                     self.C = tf.get_variable('embedding_matrix_chars',
                                              dtype=tf.float32,
                                              initializer=self._get_weight(
-                                                 self.train_config["char_embedding_matrix_shape"][0],
-                                                 self.train_config["char_embedding_matrix_shape"][1]),
+                                                 self.train_config["char_count"],
+                                                 self.train_config["char_embedding_size"]),
                                              trainable=True)
 
             if not self.reuse and not self.test:
@@ -155,6 +155,8 @@ class BiLSTMCRF:
         :return: character based representation [batch_size, seq_size, char_lstm_num_hidden * 2]
         """
 
+        char_lstm_num_hidden = self.train_config["char_hidden_layer_size"]
+
         # Reshaping token lengths tensor []
         reshaped_len = tf.reshape(self.x_chars_len, [-1])
 
@@ -162,12 +164,12 @@ class BiLSTMCRF:
         input_chars = tf.reshape(self.embed_chars,
                                  [tf.shape(self.embed_chars)[0] * tf.shape(self.embed_chars)[1],
                                   tf.shape(self.embed_chars)[2],
-                                  self.char_embedding_size])
+                                  char_lstm_num_hidden])
 
         with tf.variable_scope('char_representation', reuse=self.reuse):
 
-            lstm_cell_fw = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True)
-            lstm_cell_bw = tf.contrib.rnn.LSTMCell(self.char_lstm_num_hidden, state_is_tuple=True)
+            lstm_cell_fw = tf.contrib.rnn.LSTMCell(char_lstm_num_hidden, state_is_tuple=True)
+            lstm_cell_bw = tf.contrib.rnn.LSTMCell(char_lstm_num_hidden, state_is_tuple=True)
 
             outputs, states = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=lstm_cell_fw,
@@ -182,7 +184,7 @@ class BiLSTMCRF:
         # Reshaping the output [batch_size, seq_len, char_lstm_num_hidden * 2]
         final_output = tf.reshape(char_vector,
                                   [tf.shape(self.embed_chars)[0], tf.shape(self.embed_chars)[1],
-                                   self.char_lstm_num_hidden * 2])
+                                   char_lstm_num_hidden * 2])
 
         return final_output
 
