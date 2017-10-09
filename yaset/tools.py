@@ -1,4 +1,5 @@
 import os
+import logging
 
 
 def ensure_dir(directory):
@@ -25,3 +26,12 @@ def get_other_extension(filename, target_extension):
     basename, extension = os.path.splitext(filename)
 
     return "{0}.{1}".format(basename, target_extension)
+
+
+def log_message(message):
+
+    logging.info("{} {} {}".format(
+        "=" * 10,
+        message,
+        "=" * (70 - len(message) - 2 - 10)
+    ))

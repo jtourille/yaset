@@ -44,16 +44,20 @@ class StatsCorpus:
 
 
 class TrainData:
+    """
+    Main class for training data
+    """
 
     def __init__(self, working_dir=None, data_params=None):
 
-        # Paths to tabulated data files
+        # Path to tabulated train files
         self.train_file_path = os.path.abspath(data_params.get("train_file_path"))
 
-        # Checking if train data file exists
+        # Checking if train file exists
         if not os.path.isfile(self.train_file_path):
             raise FileNotFoundError("The train file you specified does not exist: {}".format(self.train_file_path))
 
+        # Extracting dev-instances-related parameters
         self.dev_file_use = data_params.get("dev_file_use")
         self.dev_random_seed_use = data_params.get("dev_random_seed_use")
         self.dev_random_seed_value = None
@@ -62,12 +66,14 @@ class TrainData:
         if self.dev_file_use:
             self.dev_file_path = os.path.abspath(data_params.get("dev_file_path"))
 
+            # Checking if dev file exists
             if not os.path.isfile(self.dev_file_path):
                 raise FileNotFoundError("The 'dev' file you specified does not exist: {}".format(
                     self.dev_file_path
                 ))
         else:
             self.dev_ratio = data_params.get("dev_random_ratio")
+
             if self.dev_ratio <= 0 or self.dev_ratio >= 1:
                 raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(self.dev_ratio))
 
@@ -77,7 +83,6 @@ class TrainData:
         # Paths to current working directory
         self.working_dir = working_dir
 
-        # self.feature_columns = feature_columns
         self.lower_input = data_params.get("preproc_lower_input")
         self.replace_digits = data_params.get("replace_digits")
 
@@ -95,6 +100,7 @@ class TrainData:
         self.tfrecords_train_file = os.path.join(self.tfrecords_dir_path, "train.tfrecords")
         self.tfrecords_dev_file = os.path.join(self.tfrecords_dir_path, "dev.tfrecords")
 
+        # Train and dev unknown token lists
         self.unknown_tokens_train_file = os.path.join(self.working_dir, "unknown_tokens_train.lst")
         self.unknown_tokens_dev_file = os.path.join(self.working_dir, "unknown_tokens_dev.lst")
 
@@ -123,15 +129,15 @@ class TrainData:
             logging.info("Checking train file: {}".format(os.path.basename(self.train_file_path)))
             self._check_file(self.train_file_path, self.feature_columns)
 
-        if self.dev_file_path:
+        if self.dev_file_use:
             logging.info("Checking dev file: {}".format(os.path.basename(self.dev_file_path)))
             self._check_file(self.dev_file_path, self.feature_columns)
 
     def create_tfrecords_files(self, embedding_object, oov_strategy=None, unk_token_rate=None):
         """
         Create 'train' and 'dev' TFRecords files
-        :param unk_token_rate:
-        :param random_seed: random seed for train/dev splitting
+        :param oov_strategy: Out-Of-Vocabulary strategy applied during training
+        :param unk_token_rate: singleton replacement rate if applicable
         :param embedding_object: yaset embedding object to use for token IDs fetching
         :return: nothing
         """
@@ -143,6 +149,9 @@ class TrainData:
         if oov_strategy == "replace":
             logging.debug("OOV strategy: replace")
             logging.debug("Unknown token replacement rate: {}".format(unk_token_rate))
+
+        elif oov_strategy == "map":
+            logging.debug("OOV strategy: map")
 
         # Case where there is no dev data file
         if not self.dev_file_use:
