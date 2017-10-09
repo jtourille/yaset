@@ -1,15 +1,13 @@
-import pkg_resources
-
-from .helpers.config import extract_params
-from .tools import ensure_dir, log_message
-from .data.reader import TrainData
-from .nn.train import train_model
-import shutil
 import importlib
 import logging
 import os
-import time
-import sys
+
+import pkg_resources
+
+from .data.reader import TrainData
+from .helpers.config import extract_params
+from .nn.train import train_model
+from .tools import ensure_dir, log_message
 
 
 def learn(parsed_configuration, timestamp):
@@ -153,9 +151,6 @@ def learn(parsed_configuration, timestamp):
         logging.debug("* {} = {}".format(k, v))
 
     train_model(current_working_directory, embedding_object, data, training_params, model_params)
-
-    target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
-    shutil.copy(os.path.abspath(config_file_path), target_model_configuration_path)
 
     log_message("END - LEARNING MODEL")
 
