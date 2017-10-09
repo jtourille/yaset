@@ -340,12 +340,18 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     # Creating main computation sub-graph
     logging.debug("-> Instantiating NN model ('train')")
     with tf.name_scope('train'):
-        model_train = BiLSTMCRF(batch_train, reuse=False, test=False, **model_args)
+        if train_params["model_type"] == "bilstm-char-crf":
+            model_train = BiLSTMCRF(batch_train, reuse=False, test=False, **model_args)
+        else:
+            raise Exception("The model type ou specified does not exist: {}".format(train_params["model_type"]))
 
     # Creating dev computation sub-graph, setting reuse to 'true' for weight sharing
     logging.debug("-> Instantiating NN model ('dev')")
     with tf.name_scope('dev'):
-        model_dev = BiLSTMCRF(batch_dev, reuse=True, test=False, **model_args)
+        if train_params["model_type"] == "bilstm-char-crf":
+            model_dev = BiLSTMCRF(batch_dev, reuse=True, test=False, **model_args)
+        else:
+            raise Exception("The model type ou specified does not exist: {}".format(train_params["model_type"]))
 
     # Initialization Op
     with tf.device('/cpu:0'):
@@ -373,17 +379,9 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
 
     _ = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-    # Computing the 5% threeshold for logging
-    display_every_n_train = math.ceil((train_nb_examples //
-                                       train_params["batch_size"]) * 0.05) * train_params["batch_size"]
-
-    display_every_n_dev = math.ceil((dev_nb_examples //
-                                     train_params["batch_size"]) * 0.05) * train_params["batch_size"]
-
     logging.info("Zajiganié !")
 
     iteration_number = 1
-    train_counter = 0
     train_counter_global = 0
 
     train_logger = TrainLogger()
@@ -392,10 +390,12 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     # Looping until max iteration is reached
     while iteration_number <= train_params["max_iterations"]:
 
+        train_counter_global += _do_one_iteration(train_nb_examples, train_params, model_params,
+                                                  model_args, train_counter_global, model_train,
+                                                  sess, iteration_number)
+
         # Resetting the counter if an iteration has been completed
-        if train_counter >= train_nb_examples:
-            train_counter = 0
-            iteration_number += 1
+        iteration_number += 1
 
         # Starting evaluation on dev corpus if an iteration has been completed
         if iteration_number - 1 not in train_logger and iteration_number - 1 != 0:
@@ -403,156 +403,12 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
             logging.info("End iteration {}".format(iteration_number - 1))
             logging.info("Evaluating on dev corpus")
 
-            params = {
-                model_args["pl_dropout"]: 0.0
-            }
+            do_break = _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, train_params,
+                                        data_object, saver, tf_model_saving_name, iteration_number, train_logger,
+                                        tf_model_saver_path)
 
-            dev_counter = 0
-
-            done = set()
-
-            metric_payload = list()
-
-            while dev_counter < dev_nb_examples:
-
-                x_id, x_len, y_pred, y_target = sess.run([batch_dev[0], batch_dev[1], model_dev.prediction,
-                                                          batch_dev[5]], feed_dict=params)
-
-                dev_counter += train_params["batch_size"]
-                cur_percentage = (float(dev_counter) / dev_nb_examples) * 100
-
-                for seq_id_, seq_len_, unary_scores_, y_target_ in zip(x_id, x_len, y_pred, y_target):
-
-                    curr_seq_metric_payload = list()
-
-                    seq_id_str = seq_id_.decode("UTF-8")
-
-                    if seq_id_str in done:
-                        continue
-                    else:
-                        done.add(seq_id_str)
-
-                    unary_scores_ = unary_scores_[:seq_len_]
-
-                    # Tiling and adding START and END tokens
-
-                    start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
-                    end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
-
-                    tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
-
-                    tiled_tensor = np.concatenate([unary_scores_, tile], 1)
-
-                    tensor_start_end = np.concatenate([start_unary_scores, tiled_tensor, end_unary_tensor], 0)
-
-                    viterbi_sequence,\
-                        viterbi_score = tf.contrib.crf.viterbi_decode(tensor_start_end,
-                                                                      sess.run(model_dev.transition_params))
-
-                    # Counting incorrect and correct predictions
-                    for label_pred, label_gs in zip(viterbi_sequence[1:-1], y_target_):
-
-                        curr_seq_metric_payload.append({
-                            "gs": data_object.inv_label_mapping[label_gs],
-                            "pred": data_object.inv_label_mapping[label_pred]
-                        })
-
-                    metric_payload.append(curr_seq_metric_payload)
-
-                # Logging progress
-                if dev_counter % display_every_n_dev == 0 or cur_percentage >= 100:
-                    if cur_percentage >= 100:
-                        logging.info("* processed={} ({:5.2f}%)".format(
-                            dev_nb_examples,
-                            round(100.0, 2),
-                        ))
-                    else:
-                        logging.info("* processed={} ({:5.2f}%)".format(
-                            dev_counter,
-                            round(cur_percentage, 2),
-                        ))
-
-            # Computing token accuracy
-            pred_labels = list()
-            gs_labels = list()
-
-            for seq in metric_payload:
-                for tok in seq:
-                    pred_labels.append(tok["pred"])
-                    gs_labels.append(tok["gs"])
-
-            accuracy = accuracy_score(gs_labels, pred_labels)
-
-            if train_params["dev_metric"] == "accuracy":
-
-                logging.info("Accuracy: {}".format(accuracy))
-                logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
-
-                score = accuracy
-
-            elif train_params["dev_metric"] == "conll":
-
-                precision, recall, f1 = conll_evaluation(metric_payload)
-
-                logging.info("Accuracy: {}".format(accuracy))
-                logging.info("Precision: {}".format(precision))
-                logging.info("Recall: {}".format(recall))
-                logging.info("F1: {}".format(f1))
-
-                score = f1
-
-            else:
-                raise Exception("The 'dev' metric you specified does not exist: {}".format(train_params["dev_metric"]))
-
-            logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
-
-            model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
-
-            # Adding iteration score to train logger object
-            train_logger.add_iteration_score(iteration_number - 1, score)
-            train_logger.add_iteration_model_filename(iteration_number - 1, model_name)
-
-            logging.info("Model has been saved at: {}".format(model_name))
-
-            if iteration_number - 1 != 1:
-                logging.info("Cleaning model directory (saving space)")
-                _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
-
-            # Quitting main loop if patience is reached
-            if train_logger.check_patience(train_params["patience"]):
-                logging.info("Patience reached, quitting main loop")
+            if do_break:
                 break
-
-        # Setting dropout for learning (defined by user)
-        params = {
-            model_args["pl_dropout"]: model_params["dropout_rate"],
-            model_args["pl_global_counter"]: train_counter_global
-        }
-
-        # Optimizing with one mini-batch
-        _, loss = sess.run([model_train.optimize, model_train.loss_crf], feed_dict=params)
-
-        # Incrementing counter and computing completion
-        train_counter += train_params["batch_size"]
-        train_counter_global += train_params["batch_size"]
-        cur_percentage = (float(train_counter) / train_nb_examples) * 100
-
-        # Logging training progress
-        if train_counter % display_every_n_train == 0 or cur_percentage >= 100:
-            if cur_percentage >= 100:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
-                    iteration_number,
-                    round(100.0, 2),
-                    -loss,
-                    train_nb_examples
-                ))
-            else:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
-                    iteration_number,
-                    round(cur_percentage, 2),
-                    -loss,
-                    train_counter
-                ))
 
     logging.info("Iteration scores\n\n{}\n".format(train_logger.get_score_table()))
 
@@ -588,6 +444,175 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
         coord.join(item)
 
     sess.close()
+
+
+def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
+                      train_counter_global, model_train, sess, iteration_number):
+
+    # Computing the 5% threeshold for logging
+    display_every_n_train = math.ceil((train_nb_examples //
+                                       train_params["batch_size"]) * 0.05) * train_params["batch_size"]
+
+    train_counter = 0
+
+    while train_counter < train_nb_examples:
+
+        # Setting dropout for learning (defined by user)
+        params = {
+            model_args["pl_dropout"]: model_params["dropout_rate"],
+            model_args["pl_global_counter"]: train_counter_global
+        }
+
+        # Processing one mini-batch
+        _, loss = sess.run([model_train.optimize, model_train.loss_crf], feed_dict=params)
+
+        # Incrementing counter and computing completion
+        train_counter += train_params["batch_size"]
+
+        cur_percentage = (float(train_counter) / train_nb_examples) * 100
+
+        # Logging training progress
+        if train_counter % display_every_n_train == 0 or cur_percentage >= 100:
+            if cur_percentage >= 100:
+                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
+                    iteration_number,
+                    round(100.0, 2),
+                    -loss,
+                    train_nb_examples
+                ))
+            else:
+                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
+                    iteration_number,
+                    round(cur_percentage, 2),
+                    -loss,
+                    train_counter
+                ))
+
+
+def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, train_params, data_object,
+                     saver, tf_model_saving_name, iteration_number, train_logger, tf_model_saver_path):
+
+    display_every_n_dev = math.ceil((dev_nb_examples //
+                                     train_params["batch_size"]) * 0.05) * train_params["batch_size"]
+
+    params = {
+        model_args["pl_dropout"]: 0.0
+    }
+
+    dev_counter = 0
+    done = set()
+    metric_payload = list()
+
+    while dev_counter < dev_nb_examples:
+
+        x_id, x_len, y_pred, y_target = sess.run([batch_dev[0], batch_dev[1], model_dev.prediction,
+                                                  batch_dev[5]], feed_dict=params)
+
+        dev_counter += train_params["batch_size"]
+        cur_percentage = (float(dev_counter) / dev_nb_examples) * 100
+
+        for seq_id_, seq_len_, unary_scores_, y_target_ in zip(x_id, x_len, y_pred, y_target):
+
+            curr_seq_metric_payload = list()
+
+            seq_id_str = seq_id_.decode("UTF-8")
+
+            if seq_id_str in done:
+                continue
+            else:
+                done.add(seq_id_str)
+
+            unary_scores_ = unary_scores_[:seq_len_]
+
+            # Tiling and adding START and END tokens
+
+            start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
+            end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
+
+            tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
+
+            tiled_tensor = np.concatenate([unary_scores_, tile], 1)
+
+            tensor_start_end = np.concatenate([start_unary_scores, tiled_tensor, end_unary_tensor], 0)
+
+            viterbi_sequence, \
+            viterbi_score = tf.contrib.crf.viterbi_decode(tensor_start_end,
+                                                          sess.run(model_dev.transition_params))
+
+            # Counting incorrect and correct predictions
+            for label_pred, label_gs in zip(viterbi_sequence[1:-1], y_target_):
+                curr_seq_metric_payload.append({
+                    "gs": data_object.inv_label_mapping[label_gs],
+                    "pred": data_object.inv_label_mapping[label_pred]
+                })
+
+            metric_payload.append(curr_seq_metric_payload)
+
+        # Logging progress
+        if dev_counter % display_every_n_dev == 0 or cur_percentage >= 100:
+            if cur_percentage >= 100:
+                logging.info("* processed={} ({:5.2f}%)".format(
+                    dev_nb_examples,
+                    round(100.0, 2),
+                ))
+            else:
+                logging.info("* processed={} ({:5.2f}%)".format(
+                    dev_counter,
+                    round(cur_percentage, 2),
+                ))
+
+                # Computing token accuracy
+    pred_labels = list()
+    gs_labels = list()
+
+    for seq in metric_payload:
+        for tok in seq:
+            pred_labels.append(tok["pred"])
+            gs_labels.append(tok["gs"])
+
+    accuracy = accuracy_score(gs_labels, pred_labels)
+
+    if train_params["dev_metric"] == "accuracy":
+
+        logging.info("Accuracy: {}".format(accuracy))
+        logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
+
+        score = accuracy
+
+    elif train_params["dev_metric"] == "conll":
+
+        precision, recall, f1 = conll_evaluation(metric_payload)
+
+        logging.info("Accuracy: {}".format(accuracy))
+        logging.info("Precision: {}".format(precision))
+        logging.info("Recall: {}".format(recall))
+        logging.info("F1: {}".format(f1))
+
+        score = f1
+
+    else:
+        raise Exception("The 'dev' metric you specified does not exist: {}".format(train_params["dev_metric"]))
+
+    logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
+
+    model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
+
+    # Adding iteration score to train logger object
+    train_logger.add_iteration_score(iteration_number - 1, score)
+    train_logger.add_iteration_model_filename(iteration_number - 1, model_name)
+
+    logging.info("Model has been saved at: {}".format(model_name))
+
+    if iteration_number - 1 != 1:
+        logging.info("Cleaning model directory (saving space)")
+        _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
+
+    # Quitting main loop if patience is reached
+    if train_logger.check_patience(train_params["patience"]):
+        logging.info("Patience reached, quitting main loop")
+        return True
+    else:
+        return False
 
 
 def apply_model(working_dir, model_dir, data_object: TestData, train_config, n_jobs=1):

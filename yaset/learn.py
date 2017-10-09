@@ -113,7 +113,7 @@ def learn(parsed_configuration, timestamp):
         logging.info("Creating embedding object")
         embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
         embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
-        embedding_object = embedding_class(embedding_file_path, embedding_oov_map_token_id)
+        embedding_object = embedding_class(embedding_file_path, embedding_oov_strategy, embedding_oov_map_token_id)
 
         # Loading embedding matrix into embedding object
         logging.info("Loading matrix")

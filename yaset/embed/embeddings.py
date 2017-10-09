@@ -8,11 +8,12 @@ from ..error import UnknownTokenAlreadyExists
 
 class Embeddings:
 
-    def __init__(self, embedding_file_path, embedding_oov_map_token_id):
+    def __init__(self, embedding_file_path, embedding_oov_strategy, embedding_oov_map_token_id):
 
         # Gensim model file path
         self.embedding_file_path = os.path.abspath(embedding_file_path)
 
+        self.embedding_oov_strategy = embedding_oov_strategy
         self.embedding_oov_map_token_id = embedding_oov_map_token_id
 
         # Word-id mapping
