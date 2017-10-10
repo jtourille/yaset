@@ -84,7 +84,7 @@ class TrainData:
         self.working_dir = working_dir
 
         self.lower_input = data_params.get("preproc_lower_input")
-        self.replace_digits = data_params.get("replace_digits")
+        self.replace_digits = data_params.get("preproc_replace_digits")
 
         self.singletons = None
 
