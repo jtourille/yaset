@@ -453,6 +453,9 @@ def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
     display_every_n_train = math.ceil((train_nb_examples //
                                        train_params["batch_size"]) * 0.05) * train_params["batch_size"]
 
+    if display_every_n_train == 0:
+        display_every_n_train = train_params["batch_size"]
+
     train_counter = 0
 
     while train_counter < train_nb_examples:
@@ -468,25 +471,30 @@ def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
 
         # Incrementing counter and computing completion
         train_counter += train_params["batch_size"]
+        train_counter_global += train_params["batch_size"]
 
         cur_percentage = (float(train_counter) / train_nb_examples) * 100
 
         # Logging training progress
         if train_counter % display_every_n_train == 0 or cur_percentage >= 100:
             if cur_percentage >= 100:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
+                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed_iter={}, processed_global={}".format(
                     iteration_number,
                     round(100.0, 2),
                     -loss,
-                    train_nb_examples
+                    train_nb_examples,
+                    train_counter_global
                 ))
             else:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed={}".format(
+                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed_iter={}, processed_global={}".format(
                     iteration_number,
                     round(cur_percentage, 2),
                     -loss,
-                    train_counter
+                    train_counter,
+                    train_counter_global
                 ))
+
+    return train_counter
 
 
 def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, train_params, data_object,
@@ -494,6 +502,9 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
 
     display_every_n_dev = math.ceil((dev_nb_examples //
                                      train_params["batch_size"]) * 0.05) * train_params["batch_size"]
+
+    if display_every_n_dev == 0:
+        display_every_n_dev = train_params["batch_size"]
 
     params = {
         model_args["pl_dropout"]: 0.0
@@ -525,7 +536,6 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
             unary_scores_ = unary_scores_[:seq_len_]
 
             # Tiling and adding START and END tokens
-
             start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
             end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
 
