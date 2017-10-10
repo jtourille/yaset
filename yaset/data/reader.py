@@ -471,7 +471,8 @@ class TrainData:
             "feature_value_mapping": self.feature_value_mapping,
             "feature_nb": self.feature_nb,
             "feature_columns": self.feature_columns,
-            "embedding_unknown_token_id": embedding_object.embedding_unknown_token_id,
+            "embedding_unknown_token_id": embedding_object.embedding_oov_map_token_id,
+            "embedding_oov_strategy": embedding_object.embedding_oov_strategy,
             "lower_input": self.lower_input,
             "replace_digits": self.replace_digits
         }
