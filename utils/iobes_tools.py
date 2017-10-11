@@ -190,7 +190,12 @@ def _iobes_to_iob_seq(sequence):
             current_tag = "O"
             current_cat = None
         else:
-            current_tag, current_cat = label.split("-")
+            if label.count('-') == 1:
+                current_tag, current_cat = label.split("-")
+            else:
+                parts = label.split("-")
+                current_tag = parts[0]
+                current_cat = "-".join(parts[1:])
 
         next_tag, next_cat = None, None
 
@@ -198,7 +203,12 @@ def _iobes_to_iob_seq(sequence):
             if source_labels[i+1].startswith("O"):
                 next_tag = "O"
             else:
-                next_tag, next_cat = source_labels[i+1].split("-")
+                if source_labels[i + 1].count('-') == 1:
+                    next_tag, next_cat = source_labels[i+1].split("-")
+                else:
+                    parts = source_labels[i+1].split("-")
+                    next_tag = parts[0]
+                    next_cat = "-".join(parts[1:])
 
         previous_tag, previous_cat = None, None
 
@@ -206,7 +216,12 @@ def _iobes_to_iob_seq(sequence):
             if source_labels[i-1].startswith("O"):
                 previous_tag = "O"
             else:
-                previous_tag, previous_cat = source_labels[i-1].split("-")
+                if source_labels[i - 1].count('-') == 1:
+                    previous_tag, previous_cat = source_labels[i - 1].split("-")
+                else:
+                    parts = source_labels[i - 1].split("-")
+                    previous_tag = parts[0]
+                    previous_cat = "-".join(parts[1:])
 
         # Case where current tag is 'O', no change
         if current_tag == "O":
