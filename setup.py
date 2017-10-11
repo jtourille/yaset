@@ -1,4 +1,31 @@
+import pip
 from setuptools import setup
+
+
+def is_gpu():
+    packages = [str(i) for i in pip.get_installed_distributions()]
+    for item in packages:
+        if "tensorflow-gpu" in item:
+            return True
+    return False
+
+
+kw = [
+    'scikit_learn',
+    'gensim',
+    'numpy',
+    'prettytable'
+]
+
+try:
+    import tensorflow
+except ImportError:
+    kw.append('tensorflow')
+else:
+    if is_gpu():
+        kw.append('tensorflow-gpu')
+    else:
+        kw.append('tensorflow')
 
 setup(name='yaset',
       version='0.1',
@@ -9,12 +36,6 @@ setup(name='yaset',
       license='MIT',
       packages=['yaset'],
       package_data={'yaset': ['desc/*.json']},
-      install_requires=[
-          'scikit_learn',
-          'tensorflow-gpu==1.2.0',
-          'gensim',
-          'numpy',
-          'prettytable'
-      ],
       scripts=['bin/yaset'],
-      zip_safe=False)
+      zip_safe=False,
+      install_requires=kw)

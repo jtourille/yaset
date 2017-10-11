@@ -12,11 +12,9 @@ try:
 except Exception:
     pass
 
-from yaset.data.reader import TestData
 from yaset.helpers.config import extract_params
-from yaset.learn import learn
-from yaset.nn.train import apply_model
-from yaset.tools import ensure_dir
+from yaset.learn import learn_model
+from yaset.apply import apply_model
 
 
 def parse_feature_columns(value):
@@ -142,7 +140,7 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
-        current_working_directory = learn(parsed_configuration, timestamp)
+        current_working_directory = learn_model(parsed_configuration, timestamp)
 
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
         shutil.copy(os.path.abspath(args.config), target_model_configuration_path)
@@ -162,42 +160,4 @@ if __name__ == "__main__":
         if not os.path.isdir(working_dir):
             raise NotADirectoryError("The working directory you specified does not exist: {}".format(working_dir))
 
-        current_working_directory = os.path.join(working_dir, "yaset-apply-{}".format(timestamp))
-        ensure_dir(current_working_directory)
-
-        # Setting up a log file and adding a new handler to the logger
-        log_file = os.path.join(current_working_directory, "{}.log".format(
-            "yaset-apply-{}".format(timestamp)
-        ))
-
-        fh = logging.FileHandler(log_file, encoding="UTF-8")
-        fh.setFormatter(log_format)
-        log.addHandler(fh)
-
-        log_message("BEGIN - LOADING AND CHECKING DATA FILES")
-
-        data = TestData(input_file, working_dir=current_working_directory, train_model_path=model_path)
-
-        data.check_input_file()
-
-        log_message("END - LOADING AND CHECKING DATA FILES")
-
-        log_message("BEGIN - CREATING TFRECORDS FILES")
-
-        target_tfrecords_file_path = os.path.join(os.path.abspath(current_working_directory), "data.tfrecords")
-
-        data.convert_to_tfrecords(input_file, target_tfrecords_file_path)
-
-        log_message("END - CREATING TFRECORDS FILES")
-
-        logging.info("{} BEGIN - APPLYING MODEL {}".format("=" * 10, "=" * 36))
-
-        # Load config file used during training
-        parsed_configuration = configparser.ConfigParser()
-        parsed_configuration.read(os.path.join(model_path, "config.ini"))
-
-        train_config = get_training_parameters(parsed_configuration)
-
-        apply_model(current_working_directory, model_path, data, train_config)
-
-        log_message("END - APPLYING MODEL")
+        apply_model(model_path, input_file, working_dir, timestamp)

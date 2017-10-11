@@ -375,3 +375,33 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
 def find_ngrams(input_list, n):
 
     return zip(*[input_list[i:] for i in range(n)])
+
+
+def get_best_model(train_stats_file):
+    """
+    Return best training iteration file path
+    :param train_stats_file: training log file path
+    :return: filename
+    """
+
+    # Build model file path
+    train_stats = json.load(open(os.path.abspath(train_stats_file), "r", encoding="UTF-8"))
+
+    # Fetching iteration dev scores
+    iterations = dict()
+
+    for k, v in train_stats["iterations"].items():
+        iterations[int(k)] = v
+
+    score_list = [ite["dev_score"] for _, ite in sorted(iterations.items())]
+
+    # Finding best score
+    score_max = max(score_list)
+
+    # Fetching iteration number
+    best_iteration = score_list.index(score_max) + 1
+
+    # Fetching filename
+    best_filename = iterations[best_iteration]["model_filename"]
+
+    return best_filename

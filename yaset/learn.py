@@ -10,7 +10,7 @@ from .nn.train import train_model
 from .tools import ensure_dir, log_message
 
 
-def learn(parsed_configuration, timestamp):
+def learn_model(parsed_configuration, timestamp):
 
     # Computing parameter description file paths
     training_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
