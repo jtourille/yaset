@@ -12,6 +12,9 @@ from .tools import ensure_dir, log_message
 
 def learn_model(parsed_configuration, timestamp):
 
+    # ---------------------------------------------------------------
+    # PARAMETER LOADING
+
     # Computing parameter description file paths
     training_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
     data_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
@@ -20,6 +23,8 @@ def learn_model(parsed_configuration, timestamp):
     # Extracting parameters from configuration file according to parameter description files
     data_params = extract_params(parsed_configuration["data"], data_param_desc_file)
     training_params = extract_params(parsed_configuration["training"], training_param_desc_file)
+
+    # Checking if the nn model is implemented in yaset
     if training_params["model_type"] == "bilstm-char-crf":
         model_params = extract_params(parsed_configuration["bilstm-char-crf"], bilstmcharcrf_param_desc_file)
     else:
@@ -31,12 +36,18 @@ def learn_model(parsed_configuration, timestamp):
             os.path.abspath(data_params.get("working_dir"))
         ))
 
+    # ---------------------------------------------------------------
+    # WORKING DIRECTORY SETUP
+
     # Creating the current working directory based on the top working directory
     current_working_directory = os.path.join(
         os.path.abspath(data_params.get("working_dir")),
         "yaset-learn-{}".format(timestamp)
     )
     ensure_dir(current_working_directory)
+
+    # ---------------------------------------------------------------
+    # LOGGING
 
     log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger('')
