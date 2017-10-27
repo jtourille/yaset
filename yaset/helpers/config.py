@@ -143,7 +143,7 @@ def extract_boolean_values(config_section, param_list):
             elif config_section.get(p).lower() == "false":
                 params[p] = False
             else:
-                raise Exception("The value for the attribute {} should be a boolean, got {}".format(
+                raise Exception("The value for the attribute {} should be a boolean (true or false), got {}".format(
                     p, config_section.get(p)
                 ))
 
