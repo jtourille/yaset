@@ -75,7 +75,9 @@ class TrainData:
             self.dev_ratio = data_params.get("dev_random_ratio")
 
             if self.dev_ratio <= 0 or self.dev_ratio >= 1:
-                raise Exception("The 'dev' ratio must be between 0 and 1 (current ratio: {})".format(self.dev_ratio))
+                raise Exception("The 'dev' ratio must be a float number between 0 and 1 (current ratio: {})".format(
+                    self.dev_ratio
+                ))
 
             if self.dev_random_seed_use:
                 self.dev_random_seed_value = data_params.get("dev_random_seed_value")
@@ -92,6 +94,7 @@ class TrainData:
         self.feature_columns = list()
 
         # -----------------------------------------------------------
+        # SETTING UP PATHS
 
         # Path where TFRecords files will be stored
         self.tfrecords_dir_path = os.path.join(os.path.abspath(working_dir), "tfrecords")
@@ -105,11 +108,13 @@ class TrainData:
         self.unknown_tokens_dev_file = os.path.join(self.working_dir, "unknown_tokens_dev.lst")
 
         # -----------------------------------------------------------
+        # INITIALIZING STAT OBJECT
 
         self.train_stats = StatsCorpus(name="TRAIN")
         self.dev_stats = StatsCorpus(name="DEV")
 
         # -----------------------------------------------------------
+        # SETTING UP SOME VARIABLES
 
         self.label_mapping = dict()
         self.inv_label_mapping = dict()
