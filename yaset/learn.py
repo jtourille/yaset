@@ -121,7 +121,7 @@ def learn_model(parsed_configuration, timestamp):
             raise Exception("The OOV strategy you specified is not recognized: {}".format(embedding_oov_strategy))
 
         # Dynamic loading of embedding module. Allow to write custom modules for specific model formats.
-        logging.info("Creating embedding object")
+        logging.debug("Creating embedding object")
         embedding_module = importlib.import_module("yaset.embed.{}".format(embedding_model_type))
         embedding_class = getattr(embedding_module, "{}Embeddings".format(embedding_model_type.title()))
         embedding_object = embedding_class(embedding_file_path, embedding_oov_strategy, embedding_oov_map_token_id)
