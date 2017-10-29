@@ -12,6 +12,8 @@ from .models.lstm import BiLSTMCRF
 from ..data.reader import TrainData
 from ..tools import ensure_dir
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 def read_and_decode(filename_queue, feature_columns):
     """
