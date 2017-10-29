@@ -27,14 +27,14 @@ class StatsCorpus:
 
     def log_stats(self):
 
-        logging.info("* Nb. sequences: {:,}".format(len(self.sequence_lengths)))
-        logging.info("* Nb. tokens: {:,}".format(self.nb_words))
-        logging.info("* Nb. true unknown tokens: {:,} ({:.2f}%)".format(
+        logging.info("* nb. sequences: {:,}".format(len(self.sequence_lengths)))
+        logging.info("* nb. tokens: {:,}".format(self.nb_words))
+        logging.info("* nb. true unknown tokens: {:,} ({:.2f}%)".format(
             len(self.unknown_words),
             (len(self.unknown_words) / self.nb_words) * 100
         ))
-        logging.info("* Nb. true unique unknown tokens: {:,}".format(len(list(set(self.unknown_words)))))
-        logging.info("* Nb. replaced singletons: {:,}".format(self.replaced_singletons))
+        logging.info("* nb. true unique unknown tokens: {:,}".format(len(list(set(self.unknown_words)))))
+        logging.info("* nb. replaced singletons: {:,}".format(self.replaced_singletons))
 
     def dump_unknown_tokens(self, target_file):
 
