@@ -39,7 +39,7 @@ class Embeddings:
         unknown_vector = np.random.rand(1, self.embedding_matrix.shape[1])
 
         # Appending the unknown token vector to the embedding matrix
-        logging.debug("-> Appending the unknown vector to the matrix and adding a mapping")
+        logging.debug("-> Appending the unknown vector to the matrix")
         self.embedding_matrix = np.append(self.embedding_matrix,
                                           unknown_vector,
                                           axis=0)
