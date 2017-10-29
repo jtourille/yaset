@@ -132,10 +132,12 @@ class TrainData:
 
         if self.train_file_path:
             logging.info("Checking train file: {}".format(os.path.basename(self.train_file_path)))
+            logging.debug("Full file path: {}".format(os.path.abspath(self.train_file_path)))
             self._check_file(self.train_file_path, self.feature_columns)
 
         if self.dev_file_use:
             logging.info("Checking dev file: {}".format(os.path.basename(self.dev_file_path)))
+            logging.debug("Full file path: {}".format(os.path.abspath(self.dev_file_path)))
             self._check_file(self.dev_file_path, self.feature_columns)
 
     def create_tfrecords_files(self, embedding_object, oov_strategy=None, unk_token_rate=None):
