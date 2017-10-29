@@ -217,7 +217,9 @@ class TrainData:
             self.train_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file")
+            logging.info("* Dumping unknown word list to file: {}".format(
+                os.path.basename(self.unknown_tokens_train_file)
+            ))
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
 
             logging.info("Creating TFRecords file for dev instances...")
@@ -228,7 +230,9 @@ class TrainData:
             self.dev_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file")
+            logging.info("* Dumping unknown word list to file: {}".format(
+                os.path.basename(self.unknown_tokens_dev_file)
+            ))
             self.dev_stats.dump_unknown_tokens(self.unknown_tokens_dev_file)
 
         else:
