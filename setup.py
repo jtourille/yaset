@@ -1,5 +1,5 @@
 import pip
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def is_gpu():
@@ -34,7 +34,7 @@ setup(name='yaset',
       author='Julien Tourille',
       author_email='julien.tourille@limsi.fr',
       license='MIT',
-      packages=['yaset'],
+      packages=find_packages(),
       package_data={'yaset': ['desc/*.json']},
       scripts=['bin/yaset'],
       zip_safe=False,
