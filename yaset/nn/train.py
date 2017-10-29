@@ -244,6 +244,9 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
         "pl_global_counter": tf.placeholder(tf.int32)
     }
 
+    model_train = None
+    model_dev = None
+
     # Creating main computation sub-graph
     logging.debug("-> Instantiating NN model ('train')")
     with tf.name_scope('train'):
