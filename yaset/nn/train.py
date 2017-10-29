@@ -181,21 +181,21 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     logging.info("Building computation graph")
 
     # Clearing TensorFlow computation graph
-    logging.debug("-> Resetting TensorFlow graph")
+    logging.debug("* Resetting TensorFlow graph")
     tf.reset_default_graph()
 
     # Creating TensorFlow thread coordinator
-    logging.debug("-> Creating coordinator")
+    logging.debug("* Creating coordinator")
     coord = tf.train.Coordinator()
 
     train_bucket_boundaries = None
 
     if train_params["bucket_use"]:
         # Computing bucket boundaries for bucketing
-        logging.debug("-> Computing bucket boundaries")
+        logging.debug("* Computing bucket boundaries")
         train_bucket_boundaries = compute_bucket_boundaries(
             data_object.train_stats.sequence_lengths, train_params["batch_size"])
-        logging.debug("-> Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
+        logging.debug("* Bucket boundaries for train instances: {}".format(sorted(train_bucket_boundaries)))
 
     # Fetching 'train' and 'dev' instance counts
     train_nb_examples = data_object.train_stats.nb_instances
@@ -206,7 +206,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     tfrecords_dev_file_path = os.path.join(os.path.abspath(working_dir), "tfrecords", "dev.tfrecords")
 
     # Building 'train' input pipeline sub-graph
-    logging.debug("-> Building 'train' input pipeline")
+    logging.debug("* Building 'train' input pipeline")
     queue_runner_list_train, queue_list_train,\
         batch_train = _build_train_pipeline(tfrecords_train_file_path,
                                             data_object.feature_columns,
@@ -215,7 +215,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
                                             nb_instances=train_nb_examples)
 
     # Building 'dev' input pipeline sub-graph
-    logging.debug("-> Building 'dev' input pipeline")
+    logging.debug("* Building 'dev' input pipeline")
     queue_runner_list_dev, queue_list_dev,\
         batch_dev = _build_dev_pipeline(tfrecords_dev_file_path,
                                         data_object.feature_columns,
@@ -248,7 +248,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     model_dev = None
 
     # Creating main computation sub-graph
-    logging.debug("-> Instantiating NN model ('train')")
+    logging.debug("* Instantiating NN model ('train')")
     with tf.name_scope('train'):
         if train_params["model_type"] == "bilstm-char-crf":
             model_train = BiLSTMCRF(batch_train, reuse=False, test=False, **model_args)
@@ -256,7 +256,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
             raise Exception("The model type ou specified does not exist: {}".format(train_params["model_type"]))
 
     # Creating dev computation sub-graph, setting reuse to 'true' for weight sharing
-    logging.debug("-> Instantiating NN model ('dev')")
+    logging.debug("* Instantiating NN model ('dev')")
     with tf.name_scope('dev'):
         if train_params["model_type"] == "bilstm-char-crf":
             model_dev = BiLSTMCRF(batch_dev, reuse=True, test=False, **model_args)
@@ -275,7 +275,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     saver = tf.train.Saver(max_to_keep=0)
 
     # Creating TensorFlow Session object
-    logging.debug("-> Creating TensorFlow session and initializing computation graph (variables + embeddings)")
+    logging.debug("* Creating TensorFlow session and initializing computation graph (variables + embeddings)")
     sess = tf.Session(config=config_tf)
 
     # Initializing variables and embedding matrix
@@ -283,7 +283,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     sess.run(model_train.embedding_tokens_init, {model_args["pl_emb"]: embedding_object.embedding_matrix})
 
     # Launching threads and starting TensorFlow queue runners
-    logging.debug("-> Launching threads and TensorFlow queue runners")
+    logging.debug("* Launching threads and TensorFlow queue runners")
     threads_train = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_train]
     threads_dev = [item.create_threads(sess, coord=coord, start=True) for item in queue_runner_list_dev]
 
