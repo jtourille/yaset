@@ -856,6 +856,45 @@ def _iobes_to_iob_seq(sequence):
     return final_bioes
 
 
+def convert_to_one_class(source_file, target_file):
+    """
+    Convert multi-class IOBES scheme into one-class IOBES scheme
+    :param source_file: input file path
+    :param target_file: target file path
+    :return:
+    """
+
+    with open(os.path.abspath(source_file), "r", encoding="UTF-8") as input_file:
+        with open(os.path.abspath(target_file), "w", encoding="UTF-8") as output_file:
+            for i, line in enumerate(input_file, start=1):
+                if re.match("^$", line):
+                    output_file.write("\n")
+                    continue
+
+                parts = line.rstrip("\n").split('\t')
+                if parts[-1].startswith("I"):
+                    parts[-1] = "I-UNK"
+
+                elif parts[-1].startswith("B"):
+                    parts[-1] = "B-UNK"
+
+                elif parts[-1].startswith("E"):
+                    parts[-1] = "E-UNK"
+
+                elif parts[-1].startswith("S"):
+                    parts[-1] = "S-UNK"
+
+                elif parts[-1].startswith("O"):
+                    pass
+
+                else:
+                    raise Exception("Label should start with I, O, B, E or S, got {} at line {}: {}".format(
+                        parts[-1][0], i, line.rstrip("\n")
+                    ))
+
+                output_file.write("{}\n".format("\t".join(parts)))
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -863,17 +902,23 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
 
+    # Convert IOB tagging scheme to IOBES
     parser_iob_to_iobes = subparsers.add_parser('IOB-TO-IOBES', help="Convert IOB to IOBES tagging scheme")
     parser_iob_to_iobes.add_argument("--input-file", help="Input CoNLL file to convert", dest="input_file",
                                      type=str, required=True)
     parser_iob_to_iobes.add_argument("--output-file", help="Output CoNLL file", dest="output_file", type=str,
                                      required=True)
+    parser_iob_to_iobes.add_argument('--check-integrity', help="Check tagging scheme integrity", dest="check",
+                                     action='store_true')
 
+    # Convert IOBES tagging scheme to IOB
     parser_iobes_to_iob = subparsers.add_parser('IOBES-TO-IOB', help="Convert IOBES to IOB tagging scheme")
     parser_iobes_to_iob.add_argument("--input-file", help="Input CoNLL file to convert", dest="input_file", type=str,
                                      required=True)
     parser_iobes_to_iob.add_argument("--output-file", help="Output CoNLL file", dest="output_file", type=str,
                                      required=True)
+    parser_iobes_to_iob.add_argument('--check-integrity', help="Check tagging scheme integrity", dest="check",
+                                     action='store_true')
 
     parser_check_format = subparsers.add_parser('CHECK', help="Check tagging scheme coherence")
     parser_check_format.add_argument("--input-file", help="Input CoNLL file to check", dest="input_file",
@@ -883,6 +928,13 @@ if __name__ == "__main__":
     group_scheme.add_argument('--iob', action='store_true')
     group_scheme.add_argument('--iobe', action='store_true')
     group_scheme.add_argument('--iobes', action='store_true')
+
+    # Multiclass to oneclass
+    parser_multi_to_one = subparsers.add_parser('MULTI-TO-ONE', help="Convert IOBES to IOB tagging scheme")
+    parser_multi_to_one.add_argument("--input-file", help="Input CoNLL file to convert", dest="input_file", type=str,
+                                     required=True)
+    parser_multi_to_one.add_argument("--output-file", help="Output CoNLL file", dest="output_file", type=str,
+                                     required=True)
 
     args = parser.parse_args()
 
@@ -906,9 +958,15 @@ if __name__ == "__main__":
         logging.info("Starting converting tagging scheme")
         logging.info("* source file: {}".format(os.path.abspath(args.input_file)))
         logging.info("* target file: {}".format(os.path.abspath(args.output_file)))
+        logging.info("* check tagging scheme integrity: {}".format(args.check))
 
         start = time.time()
 
+        if args.check:
+            logging.info("Checking tagging scheme integrity")
+            check_tagging_scheme(args.input_file, "IOB")
+
+        logging.info("Converting file")
         iob_to_iobes(args.input_file, args.output_file)
 
         end = time.time()
@@ -935,14 +993,50 @@ if __name__ == "__main__":
         logging.info("Starting converting tagging scheme")
         logging.info("* source file: {}".format(os.path.abspath(args.input_file)))
         logging.info("* target file: {}".format(os.path.abspath(args.output_file)))
+        logging.info("* check tagging scheme integrity: {}".format(args.check))
 
         start = time.time()
 
+        if args.check:
+            logging.info("Checking tagging scheme integrity")
+            check_tagging_scheme(args.input_file, "IOBES")
+
+        logging.info("Converting file")
         iobes_to_iob(args.input_file, args.output_file)
 
         end = time.time()
 
         logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end-start))))
+
+    elif args.subparser_name == "MULTI-TO-ONE":
+
+        # Logging to stdout
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+
+        # Checking if input file exists
+        if not os.path.isfile(os.path.abspath(args.input_file)):
+            raise FileNotFoundError("The input file does not exist: {}".format(
+                os.path.abspath(args.input_file)
+            ))
+
+        # Checking if output file exists
+        if os.path.isfile(os.path.abspath(args.output_file)):
+            raise FileExistsError("The output file you specified already exists {}".format(
+                os.path.abspath(args.output_file)
+            ))
+
+        logging.info("Starting conversion")
+        logging.info("* source file: {}".format(os.path.abspath(args.input_file)))
+        logging.info("* target file: {}".format(os.path.abspath(args.output_file)))
+
+        start = time.time()
+
+        logging.info("Converting file")
+        convert_to_one_class(args.input_file, args.output_file)
+
+        end = time.time()
+
+        logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))
 
     elif args.subparser_name == "CHECK":
 
