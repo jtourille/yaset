@@ -90,11 +90,15 @@ class TrainLogger:
         """
 
         x = PrettyTable()
+        best_ite = self.get_best_iteration()
 
-        for iter_nb, payload in sorted(self.iterations_log.items()):
-            x.field_names = ["Ite. nb.", "dev acc."]
+        for i, (iter_nb, payload) in enumerate(sorted(self.iterations_log.items()), start=1):
+            x.field_names = ["Iteration", "Dev Score"]
 
-            current_iter_nb = "{:3d}".format(iter_nb)
+            if best_ite == i:
+                current_iter_nb = "**{:03d}**".format(iter_nb)
+            else:
+                current_iter_nb = "{:03d}".format(iter_nb)
             current_score = "{:.5f}".format(payload["dev_score"])
 
             x.add_row([current_iter_nb, current_score])
