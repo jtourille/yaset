@@ -528,25 +528,25 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
 
     logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
 
-    model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number)
-
     # Adding iteration score to train logger object
     train_logger.add_iteration_score(iteration_number, score)
-    train_logger.add_iteration_model_filename(iteration_number, model_name)
 
-    logging.info("Model has been saved at: {}".format(model_name))
-
-    if iteration_number - 1 != 0:
-        logging.info("Cleaning model directory (saving space)")
-        _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
+    best_iteration = train_logger.get_best_iteration()
 
     chk_patience = train_logger.check_patience(train_params["patience"])
-    best_iteration = train_logger.get_best_iteration()
 
     if best_iteration == iteration_number:
         logging.info("New best score, waiting {} iterations without improvement before quitting main loop".format(
             train_params["patience"]
         ))
+
+        model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number)
+        train_logger.add_iteration_model_filename(iteration_number, model_name)
+        logging.info("Model has been saved at: {}".format(model_name))
+
+        if iteration_number - 1 != 0:
+            logging.info("Cleaning model directory (saving space)")
+            _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
 
         return False
 
