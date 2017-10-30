@@ -28,10 +28,10 @@ def get_other_extension(filename, target_extension):
     return "{0}.{1}".format(basename, target_extension)
 
 
-def log_message(message):
+def log_message(message, symbol="="):
 
     logging.info("{} {} {}".format(
-        "=" * 10,
+        symbol * 10,
         message,
-        "=" * (70 - len(message) - 2 - 10)
+        symbol * (70 - len(message) - 2 - 10)
     ))
