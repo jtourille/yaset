@@ -4,3 +4,10 @@
 
 * Official website: https://jtourille.github.io/yaset/
 * Documentation: http://yaset.readthedocs.io
+
+## Acknowledgements
+
+This work was supported by Labex Digicosme, operated by the Foundation for Scientific Cooperation (FSC) Paris-Saclay, 
+under grant CÔT and by the French National Agency for Research under grant CABeRneT ANR-13-JS02-0009-01.
+
+ 
