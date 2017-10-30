@@ -191,21 +191,21 @@ class TrainData:
             logging.info("Building character mapping")
             self.char_mapping = self._get_char_mapping(self.train_file_path, train_indexes,
                                                        replace_digits=self.replace_digits)
-            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
+            logging.info("* nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
             if self.feature_use:
                 logging.info("Building attribute mapping")
                 self.feature_value_mapping = self._get_feature_value_mapping(self.train_file_path, self.feature_columns,
                                                                              indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
-                    logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
+                    logging.info("* nb. unique values for feat. {} (col. #{}): {}".format(
                         i, col, len(self.feature_value_mapping[col])
                     ))
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
             self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_file_path, train_indexes)
-            logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
+            logging.info("* nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Creating TFRecords file for train instances...")
@@ -217,7 +217,7 @@ class TrainData:
             self.train_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file: {}".format(
+            logging.info("Dumping unknown word list to file: {}".format(
                 os.path.basename(self.unknown_tokens_train_file)
             ))
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
@@ -230,7 +230,7 @@ class TrainData:
             self.dev_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file: {}".format(
+            logging.info("Dumping unknown word list to file: {}".format(
                 os.path.basename(self.unknown_tokens_dev_file)
             ))
             self.dev_stats.dump_unknown_tokens(self.unknown_tokens_dev_file)
@@ -253,26 +253,26 @@ class TrainData:
                 logging.info("Fetching singleton list")
                 self.singletons = self._get_singletons(self.train_file_path, indexes=train_indexes,
                                                        lower_input=self.lower_input, replace_digits=self.replace_digits)
-                logging.info("* Nb. singletons in train instances: {}".format(len(self.singletons)))
+                logging.info("* nb. singletons in train instances: {}".format(len(self.singletons)))
 
             logging.info("Building character mapping")
             self.char_mapping = self._get_char_mapping(self.train_file_path, train_indexes,
                                                        replace_digits=self.replace_digits)
-            logging.info("* Nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
+            logging.info("* nb. unique characters: {:,}".format(len(self.char_mapping) - 1))
 
             if self.feature_use:
                 logging.info("Building attribute mapping")
                 self.feature_value_mapping = self._get_feature_value_mapping(self.train_file_path, self.feature_columns,
                                                                              indexes=train_indexes)
                 for i, col in enumerate(self.feature_columns, start=1):
-                    logging.info("* Nb. unique values for feat. {} (col. #{}): {}".format(
+                    logging.info("* nb. unique values for feat. {} (col. #{}): {}".format(
                         i, col, len(self.feature_value_mapping[col])
                     ))
                     self.feature_nb += len(self.feature_value_mapping[col])
 
             logging.info("Building label mapping")
             self.label_mapping, self.inv_label_mapping = self._get_label_mapping(self.train_file_path, train_indexes)
-            logging.info("* Nb. unique labels: {:,}".format(len(self.label_mapping)))
+            logging.info("* nb. unique labels: {:,}".format(len(self.label_mapping)))
 
             # Creating 'train' and 'dev' tfrecords files
             logging.info("Creating TFRecords file for train instances...")
@@ -284,7 +284,7 @@ class TrainData:
             self.train_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file: {}".format(
+            logging.info("Dumping unknown word list to file: {}".format(
                 os.path.basename(self.unknown_tokens_train_file)
             ))
             self.train_stats.dump_unknown_tokens(self.unknown_tokens_train_file)
@@ -297,7 +297,7 @@ class TrainData:
             self.dev_stats.log_stats()
 
             # Dumping unknown word set to working dir
-            logging.info("* Dumping unknown word list to file: {}".format(
+            logging.info("Dumping unknown word list to file: {}".format(
                 os.path.basename(self.unknown_tokens_dev_file)
             ))
             self.dev_stats.dump_unknown_tokens(self.unknown_tokens_dev_file)
