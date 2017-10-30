@@ -31,7 +31,7 @@ def get_other_extension(filename, target_extension):
 def log_message(message, symbol="="):
 
     logging.info("{} {} {}".format(
-        symbol * 10,
+        symbol * 5,
         message,
-        symbol * (70 - len(message) - 2 - 10)
+        symbol * (70 - len(message) - 2 - 5)
     ))
