@@ -935,7 +935,9 @@ class TestData:
         self.embedding_unknown_token_id = self.data_char["embedding_unknown_token_id"]
 
         self.char_mapping = self.data_char["char_mapping"]
+
         self.feature_value_mapping = dict()
+
         for k, v in self.data_char["feature_value_mapping"].items():
             self.feature_value_mapping[int(k)] = v
 
@@ -958,6 +960,7 @@ class TestData:
 
         if self.test_data_file:
             logging.info("Checking file")
+            logging.debug("Full file path: {}".format(os.path.abspath(self.test_data_file)))
             self._check_file(self.test_data_file, self.feature_columns)
 
     @staticmethod
@@ -968,7 +971,6 @@ class TestData:
         :return: nothing
         """
 
-        labels = defaultdict(int)
         tokens = defaultdict(int)
 
         attributes = dict()
@@ -1000,12 +1002,11 @@ class TestData:
 
                 # Raising exception if all lines do not have the same number of columns or
                 # if the number of columns is < 2
-                if len(column_nb) > 1 or len(parts) < 2:
+                if len(column_nb) > 1 or len(parts) < 1:
                     raise Exception("Error reading the input file at line {}: {}".format(i, data_file))
 
                 # Counting tokens and labels
                 tokens[parts[0]] += 1
-                labels[parts[-1]] += 1
 
                 for col, val_dict in attributes.items():
                     val_dict[parts[col]] += 1
@@ -1036,11 +1037,6 @@ class TestData:
             ))
             for k, v in val_dict.items():
                 logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
-
-        logging.info("* nb. labels (col. #{}): {:,}".format(list(column_nb)[0] - 1, len(labels)))
-        nb_labels = sum([v for k, v in labels.items()])
-        for k, v in labels.items():
-            logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
 
     def convert_to_tfrecords(self, data_file, target_tfrecords_file_path):
         """
