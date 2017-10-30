@@ -213,7 +213,7 @@ def test_model(working_dir, model_dir, data_object: TestData, data_params, train
 
         # Logging progress
         if counter % display_every_n == 0 or cur_percentage >= 100:
-            logging.info("* processed={} ({:5.2f}%)".format(
+            logging.info("* processed={} ({:.2f}%)".format(
                 counter,
                 round(cur_percentage, 2),
             ))

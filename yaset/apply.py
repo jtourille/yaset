@@ -12,6 +12,7 @@ from .nn.test import test_model
 
 def apply_model(model_path, input_file, working_dir, timestamp):
 
+    # Creating working directory
     current_working_directory = os.path.join(working_dir, "yaset-apply-{}".format(timestamp))
     ensure_dir(current_working_directory)
 
@@ -20,6 +21,7 @@ def apply_model(model_path, input_file, working_dir, timestamp):
         "yaset-apply-{}".format(timestamp)
     ))
 
+    # Setting up logger
     log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger('')
 
