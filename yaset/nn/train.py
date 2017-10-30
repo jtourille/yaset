@@ -2,6 +2,8 @@ import logging
 import math
 import os
 import re
+import time
+from datetime import timedelta
 
 import numpy as np
 import tensorflow as tf
@@ -10,7 +12,7 @@ from sklearn.metrics import accuracy_score
 from .helpers import TrainLogger, conll_evaluation, compute_bucket_boundaries
 from .models.lstm import BiLSTMCRF
 from ..data.reader import TrainData
-from ..tools import ensure_dir
+from ..tools import ensure_dir, log_message
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -300,25 +302,34 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     # Looping until max iteration is reached
     while iteration_number <= train_params["max_iterations"]:
 
+        log_message("START - Iteration #{}".format(iteration_number), "-")
+
+        start_time = time.time()
         train_counter_global += _do_one_iteration(train_nb_examples, train_params, model_params,
                                                   model_args, train_counter_global, model_train,
-                                                  sess, iteration_number)
+                                                  sess, iteration_number, train_logger)
+        end_time = time.time()
 
-        # Resetting the counter if an iteration has been completed
+        log_message("END - Iteration #{} (Time elapsed: {})".format(iteration_number,
+                                                                    timedelta(seconds=round(end_time - start_time))),
+                    "-")
+
+        log_message("START - Evaluation on dev instances ", "-")
+
+        start_time = time.time()
+        do_break = _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, train_params,
+                                    data_object, saver, tf_model_saving_name, iteration_number, train_logger,
+                                    tf_model_saver_path)
+        end_time = time.time()
+
+        log_message("END - Evaluation on dev instances (Time elapsed: {})".format(
+            timedelta(seconds=round(end_time - start_time))
+        ), "-")
+
         iteration_number += 1
 
-        # Starting evaluation on dev corpus if an iteration has been completed
-        if iteration_number - 1 not in train_logger and iteration_number - 1 != 0:
-
-            logging.info("End iteration {}".format(iteration_number - 1))
-            logging.info("Evaluating on dev corpus")
-
-            do_break = _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, train_params,
-                                        data_object, saver, tf_model_saving_name, iteration_number, train_logger,
-                                        tf_model_saver_path)
-
-            if do_break:
-                break
+        if do_break:
+            break
 
     logging.info("Iteration scores\n\n{}\n".format(train_logger.get_score_table()))
 
@@ -357,12 +368,13 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
 
 
 def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
-                      train_counter_global, model_train, sess, iteration_number):
+                      train_counter_global, model_train, sess, iteration_number, train_logger):
 
-    # Computing the 5% threeshold for logging
+    # Computing the 5% threshold for logging
     display_every_n_train = math.ceil((train_nb_examples //
                                        train_params["batch_size"]) * 0.05) * train_params["batch_size"]
 
+    # Taking care of extreme cases
     if display_every_n_train == 0:
         display_every_n_train = train_params["batch_size"]
 
@@ -382,13 +394,14 @@ def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
         # Incrementing counter and computing completion
         train_counter += train_params["batch_size"]
         train_counter_global += train_params["batch_size"]
+        train_logger.store_minibatch_loss(iteration_number, float(loss))
 
         cur_percentage = (float(train_counter) / train_nb_examples) * 100
 
         # Logging training progress
         if train_counter % display_every_n_train == 0 or cur_percentage >= 100:
             if cur_percentage >= 100:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed_iter={}, processed_global={}".format(
+                logging.info("* epoch={} ({:.2f}%), cur_loss={:.4f}, proc_iter={}, proc_global={}".format(
                     iteration_number,
                     round(100.0, 2),
                     -loss,
@@ -396,7 +409,7 @@ def _do_one_iteration(train_nb_examples, train_params, model_params, model_args,
                     train_counter_global
                 ))
             else:
-                logging.info("* epoch={} ({:5.2f}%), loss={:7.4f}, processed_iter={}, processed_global={}".format(
+                logging.info("* epoch={} ({:.2f}%), cur_loss={:.4f}, proc_iter={}, proc_global={}".format(
                     iteration_number,
                     round(cur_percentage, 2),
                     -loss,
@@ -411,7 +424,7 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
                      saver, tf_model_saving_name, iteration_number, train_logger, tf_model_saver_path):
 
     display_every_n_dev = math.ceil((dev_nb_examples //
-                                     train_params["batch_size"]) * 0.05) * train_params["batch_size"]
+                                     train_params["batch_size"]) * 0.10) * train_params["batch_size"]
 
     if display_every_n_dev == 0:
         display_every_n_dev = train_params["batch_size"]
@@ -515,23 +528,38 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
 
     logging.debug("* nb. pred.: {:,}".format(len(pred_labels)))
 
-    model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number - 1)
+    model_name = saver.save(sess, tf_model_saving_name, global_step=iteration_number)
 
     # Adding iteration score to train logger object
-    train_logger.add_iteration_score(iteration_number - 1, score)
-    train_logger.add_iteration_model_filename(iteration_number - 1, model_name)
+    train_logger.add_iteration_score(iteration_number, score)
+    train_logger.add_iteration_model_filename(iteration_number, model_name)
 
     logging.info("Model has been saved at: {}".format(model_name))
 
-    if iteration_number - 1 != 1:
+    if iteration_number - 1 != 0:
         logging.info("Cleaning model directory (saving space)")
         _delete_models(train_logger.get_removable_iterations(), tf_model_saver_path)
 
-    # Quitting main loop if patience is reached
-    if train_logger.check_patience(train_params["patience"]):
+    chk_patience = train_logger.check_patience(train_params["patience"])
+    best_iteration = train_logger.get_best_iteration()
+
+    if best_iteration == iteration_number:
+        logging.info("New best score, waiting {} iterations without improvement before quitting main loop".format(
+            train_params["patience"]
+        ))
+
+        return False
+
+    elif chk_patience >= train_params["patience"]:
         logging.info("Patience reached, quitting main loop")
+
         return True
+
     else:
+        logging.info("Patience not reached, waiting {} iterations without improvement before quitting main loop".format(
+            train_params["patience"] - chk_patience
+        ))
+
         return False
 
 

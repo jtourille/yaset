@@ -21,21 +21,14 @@ class TrainLogger:
 
         return iteration_number in self.iterations_log
 
-    def get_best_iteration(self):
-        """
-        Return the iteration ID of the best iteration
-        :return: iteration ID (int)
-        """
+    def store_minibatch_loss(self, ite, loss):
 
-        best_iteration = None
-        best_score = None
+        self._create_iteration_item(ite)
 
-        for ite, payload in self.iterations_log.items():
-            if payload["dev_score"] > best_score or best_score is None:
-                best_iteration = ite
-                best_score = payload["dev_score"]
+        if "mini-batch-losses" not in self.iterations_log[ite]:
+            self.iterations_log[ite]["mini-batch-losses"] = list()
 
-        return best_iteration
+        self.iterations_log[ite]["mini-batch-losses"].append(loss)
 
     def add_iteration_score(self, ite, score):
         """
@@ -88,10 +81,7 @@ class TrainLogger:
 
         best_iteration = score_list.index(score_max)
 
-        if current_iteration - best_iteration >= patience:
-            return True
-        else:
-            return False
+        return current_iteration - best_iteration
 
     def get_score_table(self):
         """
@@ -110,6 +100,15 @@ class TrainLogger:
             x.add_row([current_iter_nb, current_score])
 
         return x
+
+    def get_best_iteration(self):
+
+        score_list = [ite["dev_score"] for ite_nb, ite in sorted(self.iterations_log.items())]
+        score_max = max(score_list)
+
+        best_iteration = score_list.index(score_max) + 1
+
+        return best_iteration
 
     def get_removable_iterations(self):
         """
