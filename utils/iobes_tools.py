@@ -676,12 +676,9 @@ def _iobes_to_iob_seq(sequence):
     current_entity_cat = None
     current_entity_tokens = list()
 
+    previous_tag = None
+
     for i, label in enumerate(source_labels):
-
-        # -----------------------------------------------------------
-        # CURRENT
-
-        current_tag, current_cat = None, None
 
         # Fetching tag and label for current token
         if label.startswith("O"):
@@ -695,79 +692,35 @@ def _iobes_to_iob_seq(sequence):
                 current_tag = parts[0]
                 current_cat = "-".join(parts[1:])
 
-        # -----------------------------------------------------------
-        # NEXT
-
-        next_tag, next_cat = None, None
-
-        if i < len(source_labels) - 1:
-            if source_labels[i + 1].startswith("O"):
-                next_tag = "O"
-                next_cat = None
-            else:
-                if source_labels[i + 1].count('-') == 1:
-                    next_tag, next_cat = source_labels[i + 1].split("-")
-                else:
-                    parts = source_labels[i + 1].split("-")
-                    next_tag = parts[0]
-                    next_cat = "-".join(parts[1:])
-
-        # -----------------------------------------------------------
-        # PREVIOUS
-
-        previous_tag, previous_cat = None, None
-
-        if i > 0:
-            if source_labels[i - 1].startswith("O"):
-                previous_tag = "O"
-                previous_cat = None
-            else:
-                if source_labels[i - 1].count('-') == 1:
-                    previous_tag, previous_cat = source_labels[i - 1].split("-")
-                else:
-                    parts = source_labels[i - 1].split("-")
-                    previous_tag = parts[0]
-                    previous_cat = "-".join(parts[1:])
-
         if current_tag in ["B", "S"]:
 
-            if previous_tag in ["I", "E"]:
-
+            if previous_tag in ["I", "B", "E", "S"]:
                 # Clearing entity
                 new_entity = "{}##{}".format(current_entity_cat,
                                              "-".join([str(item) for item in sorted(current_entity_tokens)]))
                 entities.append(new_entity)
 
-                current_entity_cat = None
                 current_entity_tokens.clear()
 
                 # Starting new entity
                 current_entity_cat = current_cat
                 current_entity_tokens.append(i)
 
-            elif previous_tag in ["B", "S"]:
-
-                # Clearing entity
-                new_entity = "{}##{}".format(current_entity_cat,
-                                             "-".join([str(item) for item in sorted(current_entity_tokens)]))
-                entities.append(new_entity)
-
-                current_entity_cat = None
-                current_entity_tokens.clear()
-
-                # Starting new entity
-                current_entity_cat = current_cat
-                current_entity_tokens.append(i)
+                previous_tag = "B"
 
             elif previous_tag in ["O", None]:
-
                 # Starting new entity
                 current_entity_cat = current_cat
                 current_entity_tokens.append(i)
 
-        if current_tag in ["O"]:
+                previous_tag = "B"
 
-            if previous_tag in ["B", "I", "S", "E"]:
+            else:
+                raise Exception("Something wrong happened")
+
+        elif current_tag in ["O"]:
+
+            if previous_tag in ["I", "B", "E", "S"]:
 
                 # Clearing entity
                 new_entity = "{}##{}".format(current_entity_cat,
@@ -777,14 +730,33 @@ def _iobes_to_iob_seq(sequence):
                 current_entity_cat = None
                 current_entity_tokens.clear()
 
-        if current_tag in ["I", "E"]:
+                previous_tag, previous_cat = "O", None
 
-            if previous_tag in ["O", None]:
+        elif current_tag in ["I", "E"]:
+
+            if previous_tag in ["E", "S"]:
+
+                # Clearing entity
+                new_entity = "{}##{}".format(current_entity_cat,
+                                             "-".join([str(item) for item in sorted(current_entity_tokens)]))
+                entities.append(new_entity)
+
+                current_entity_tokens.clear()
+
                 # Starting new entity
                 current_entity_cat = current_cat
                 current_entity_tokens.append(i)
 
-            elif previous_tag in ["B", "S"]:
+                previous_tag = "B"
+
+            elif previous_tag in ["O", None]:
+                # Starting new entity
+                current_entity_cat = current_cat
+                current_entity_tokens.append(i)
+
+                previous_tag = "B"
+
+            elif previous_tag in ["I", "B"]:
 
                 if current_cat != current_entity_cat:
 
@@ -793,32 +765,17 @@ def _iobes_to_iob_seq(sequence):
                                                  "-".join([str(item) for item in sorted(current_entity_tokens)]))
                     entities.append(new_entity)
 
-                    current_entity_cat = None
                     current_entity_tokens.clear()
 
                     # Starting new entity
                     current_entity_cat = current_cat
                     current_entity_tokens.append(i)
+                    
+                    previous_tag = "B"
 
                 else:
-                    current_entity_tokens.append(i)
 
-            elif previous_tag in ["I", "E"]:
-
-                if current_cat != current_entity_cat:
-
-                    # Clearing entity
-                    new_entity = "{}##{}".format(current_entity_cat,
-                                                 "-".join([str(item) for item in sorted(current_entity_tokens)]))
-                    entities.append(new_entity)
-
-                    current_entity_cat = None
-                    current_entity_tokens.clear()
-
-                    # Starting new entity
-                    current_entity_cat = current_cat
-                    current_entity_tokens.append(i)
-                else:
+                    previous_tag = "I"
                     current_entity_tokens.append(i)
 
     if len(current_entity_tokens) > 0:
