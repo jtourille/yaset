@@ -179,33 +179,6 @@ def build_report(counts):
     return x
 
 
-def report_old(counts, out=None):
-
-    if out is None:
-        out = sys.stdout
-
-    overall, by_type = metrics(counts)
-
-    c = counts
-    out.write('processed %d tokens with %d phrases; ' %
-              (c.token_counter, c.found_correct))
-    out.write('found: %d phrases; correct: %d.\n' %
-              (c.found_guessed, c.correct_chunk))
-
-    if c.token_counter > 0:
-        out.write('accuracy: %6.2f%%; ' %
-                  (100.*c.correct_tags/c.token_counter))
-        out.write('precision: %6.2f%%; ' % (100.*overall.prec))
-        out.write('recall: %6.2f%%; ' % (100.*overall.rec))
-        out.write('FB1: %6.2f\n' % (100.*overall.fscore))
-
-    for i, m in sorted(by_type.items()):
-        out.write('%50s: ' % i)
-        out.write('precision: %6.2f%%; ' % (100.*m.prec))
-        out.write('recall: %6.2f%%; ' % (100.*m.rec))
-        out.write('FB1: %6.2f  %d\n' % (100.*m.fscore, c.t_found_guessed[i]))
-
-
 def end_of_chunk(prev_tag, tag, prev_type, type_):
     """
     Check if a chunk ended between the previous and current token.
