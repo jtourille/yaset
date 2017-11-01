@@ -9,8 +9,9 @@ import numpy as np
 import tensorflow as tf
 from sklearn.metrics import accuracy_score
 
-from .helpers import TrainLogger, conll_evaluation, compute_bucket_boundaries
+from .helpers import TrainLogger, compute_bucket_boundaries
 from .models.lstm import BiLSTMCRF
+from ..conll import evaluate, calculate_metrics, build_report
 from ..data.reader import TrainData
 from ..tools import ensure_dir, log_message
 
@@ -514,14 +515,20 @@ def _evaluate_on_dev(model_args, dev_nb_examples, sess, batch_dev, model_dev, tr
 
     elif train_params["dev_metric"] == "conll":
 
-        precision, recall, f1 = conll_evaluation(metric_payload)
+        counts = evaluate(metric_payload)
 
         logging.info("Accuracy: {}".format(accuracy))
-        logging.info("Precision: {}".format(precision))
-        logging.info("Recall: {}".format(recall))
-        logging.info("F1: {}".format(f1))
+        overall = calculate_metrics(counts.correct_chunk, counts.found_guessed, counts.found_correct)
+        logging.info("CoNLL (Overall): precision={:02.2f}%, recall={:02.2f}%, f1-measure={:02.2f}%".format(
+            100. * overall.prec,
+            100. * overall.rec,
+            100. * overall.fscore
+        ))
+        logging.info("Detailed classification report:\n{}".format(
+            build_report(counts)
+        ))
 
-        score = f1
+        score = overall.fscore
 
     else:
         raise Exception("The 'dev' metric you specified does not exist: {}".format(train_params["dev_metric"]))
