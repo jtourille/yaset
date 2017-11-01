@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import time
 
 import pkg_resources
 
@@ -10,7 +11,7 @@ from .nn.train import train_model
 from .tools import ensure_dir, log_message
 
 
-def learn_model(parsed_configuration, timestamp):
+def learn_model(parsed_configuration):
 
     # ---------------------------------------------------------------
     # PARAMETER LOADING
@@ -40,10 +41,21 @@ def learn_model(parsed_configuration, timestamp):
     # WORKING DIRECTORY SETUP
 
     # Creating the current working directory based on the top working directory
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+
     current_working_directory = os.path.join(
         os.path.abspath(data_params.get("working_dir")),
         "yaset-learn-{}".format(timestamp)
     )
+
+    while os.path.isdir(current_working_directory):
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+
+        current_working_directory = os.path.join(
+            os.path.abspath(data_params.get("working_dir")),
+            "yaset-learn-{}".format(timestamp)
+        )
+
     ensure_dir(current_working_directory)
 
     # ---------------------------------------------------------------
