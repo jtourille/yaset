@@ -14,18 +14,22 @@ kw = [
     'scikit_learn',
     'gensim',
     'numpy',
-    'prettytable'
+    'prettytable',
+    'tensorflow'
 ]
 
 try:
     import tensorflow
 except ImportError:
-    kw.append('tensorflow')
+    kw.pop()
+    kw.append('tensorflow==1.2.0')
 else:
     if is_gpu():
-        kw.append('tensorflow-gpu')
+        kw.pop()
+        kw.append('tensorflow-gpu==1.2.0')
     else:
-        kw.append('tensorflow')
+        kw.pop()
+        kw.append('tensorflow==1.2.0')
 
 setup(name='yaset',
       version='0.1',
