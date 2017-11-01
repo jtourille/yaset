@@ -140,7 +140,7 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
-        current_working_directory = learn_model(parsed_configuration, timestamp)
+        current_working_directory = learn_model(parsed_configuration)
 
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
         shutil.copy(os.path.abspath(args.config), target_model_configuration_path)
