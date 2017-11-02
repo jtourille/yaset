@@ -1,4 +1,3 @@
-
 Welcome to YASET's documentation!
 =================================
 
@@ -7,3 +6,6 @@ Welcome to YASET's documentation!
    :caption: User Documentation
 
    getting_started
+   datafiles
+   train
+   apply

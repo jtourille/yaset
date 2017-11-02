@@ -1,64 +1,54 @@
 Getting Started
 ===============
 
-This document will show you how to install `yaset`, train and apply a model
+This document will show you how to install and upgrade YASET.
+
+Requirements
+------------
+
+* You need a working **Python 3.3+** environment.
+
 
 Installation
 ------------
 
-Here are the steps to follow in order to install `yaset`.
+Here are the steps to follow in order to install YASET.
 
-1. To install `yaset`, you need a working **Python 3.5+** environment.
-
-
-2. You can either **download** the `latest stable version`_ on GitHub or **clone the repository** if you want the latest development version.
+1. **Download** the `latest stable version`_ on GitHub or **clone the repository** if you want to use the cutting-edge development version.
 
 ::
-	
+
 	git clone git@github.com:jtourille/yaset.git
 
 
-3. Install `yaset` by invoking `pip`.
-
-::
-	
-	pip install .
-
-Prepare the data
-----------------
-
-`yaset` accepts CoNLL-like formatted data:
-
-* One token per line
-* Sequences separated by blank lines
-
-The first column must contain tokens and the last column must contain the labels. You can add as many other columns as you wish, they will be ignored by the system. Columns must be separated by tabulations.
-
-Train a model
--------------
-
-To train a model, first make a copy of the configuration sample and adjust the parameters to you situation
+3. Uncompress the file if necessary and move to the newly newly created directory. Install YASET by invoking `pip`.
 
 ::
 
-	cp config.ini config-xp.ini
-
-Invoke the yaset command:
-
-::
-
-	yaset LEARN --config config-xp.ini
+    cd yaset
+    pip install .
 
 
-Apply a model
--------------
+GPU Support
+-----------
 
-To apply a model, run the following command
+YASET install the non-GPU version of TensorFlow by default. If you want to use the GPU version, upgrade the TensorFlow package.
 
 ::
 
-	yaset APPLY --working_dir /path/to/working_dir \
-		--input_file /path/to/file.tab \
-		--model_path /path/to/pretrained_model
+    pip install tensorflow-gpu==1.2.0
+
+
+Upgrade
+-------
+
+If you want to upgrade to a newer version, download the last release or pull the last version of the repository and then
+upgrade the package. If you switched to the GPU version of TensorFlow, the change will be kept. You do not need to repeat
+TensorFlow upgrade.
+
+::
+
+	git pull
+	pip install --upgrade .
 
 .. _latest stable version: https://github.com/jtourille/yaset/releases/latest
