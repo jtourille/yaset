@@ -537,7 +537,8 @@ def _iob_to_iobes_seq(sequence):
                 current_entity_tokens.clear()
 
         if current_tag in ["I"]:
-            if previous_tag in ["O"]:
+
+            if previous_tag in ["O", None]:
                 # Starting new entity
                 current_entity_cat = current_cat
                 current_entity_tokens.append(i)
@@ -570,7 +571,6 @@ def _iob_to_iobes_seq(sequence):
                                                  "-".join([str(item) for item in sorted(current_entity_tokens)]))
                     entities.append(new_entity)
 
-                    current_entity_cat = None
                     current_entity_tokens.clear()
 
                     # Starting new entity
@@ -590,7 +590,6 @@ def _iob_to_iobes_seq(sequence):
     target_labels = ["O" for _ in sequence]
 
     for entity in entities:
-
         entity_cat, entity_tokens = entity.split("##")
         token_id = [int(i) for i in entity_tokens.split("-")]
 
