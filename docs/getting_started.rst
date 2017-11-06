@@ -7,6 +7,12 @@ Requirements
 ------------
 
 * You need a working **Python 3.3+** environment.
+* Optional: we recommend the use of Graphics Processing Units (GPU).
+  YASET implements state-of-the-art neural network models for
+  sequence tagging. Hence, it can leverage GPU computational power to
+  speed up computation. However, this requirement is optional and the tool
+  should be able to learn models in a reasonable time frame using only
+  Central Processing Units (CPU).
 
 
 Installation

@@ -47,6 +47,7 @@ you have computed word embeddings with `Glove`_ :cite:`Pennington2014`, you can 
 
 
 .. bibliography:: refs.bib
+   :filter: docname in docnames
 .. _CoNLL-2003 Shared Task corpus: https://www.clips.uantwerpen.be/conll2003/ner/
 .. _Gensim: https://radimrehurek.com/gensim/
 .. _script: https://radimrehurek.com/gensim/scripts/glove2word2vec.html
