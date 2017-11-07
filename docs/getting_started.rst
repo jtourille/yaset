@@ -24,18 +24,18 @@ Here are the steps to follow in order to install YASET.
 **clone the repository** if you want to use the cutting-edge development
 version.
 
-::
+.. code-block:: shell
 
-	git clone git@github.com:jtourille/yaset.git
+   $ git clone git@github.com:jtourille/yaset.git
 
 
 2. Uncompress the file if necessary and move to the newly created directory.
 Install YASET by invoking `pip`.
 
-::
+.. code-block:: shell
 
-    cd yaset
-    pip install .
+   $ cd yaset
+   $ pip install .
 
 
 GPU Support
@@ -44,9 +44,9 @@ GPU Support
 YASET install the non-GPU version of TensorFlow by default. If you want to
 use the GPUs with YASET, upgrade the TensorFlow package.
 
-::
+.. code-block:: shell
 
-    pip install tensorflow-gpu==1.2.0
+   $ pip install tensorflow-gpu==1.2.0
 
 
 Upgrade
@@ -57,9 +57,9 @@ pull the latest version of the repository and then upgrade the package.
 If you switched to the GPU version of TensorFlow, the change will be kept.
 You do not need to repeat TensorFlow upgrade.
 
-::
+.. code-block:: shell
 
-	git pull
-	pip install --upgrade .
+   $ git pull
+   $ pip install --upgrade .
 
 .. _latest stable version: https://github.com/jtourille/yaset/releases/latest
