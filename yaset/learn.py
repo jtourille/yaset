@@ -48,6 +48,7 @@ def learn_model(parsed_configuration):
         "yaset-learn-{}".format(timestamp)
     )
 
+    i = 0
     while os.path.isdir(current_working_directory):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
 
@@ -55,6 +56,9 @@ def learn_model(parsed_configuration):
             os.path.abspath(data_params.get("working_dir")),
             "yaset-learn-{}".format(timestamp)
         )
+        i += 1
+        if i == 10:
+            raise Exception("Unable to create a working directory")
 
     ensure_dir(current_working_directory)
 
