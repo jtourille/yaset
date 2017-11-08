@@ -360,10 +360,10 @@ class BiLSTMCRF:
 
         if self.train_config["opt_decay_use"]:
 
-            learning_rate = tf.train.exponential_decay(self.train_config["opt_lr"], self.global_counter,
-                                                       self.train_config["train_nb_instances"],
-                                                       self.train_config["opt_decay_rate"],
-                                                       staircase=True)
+            learning_rate = tf.train.exponential_decay(
+                self.train_config["opt_lr"], self.global_counter,
+                self.train_config["train_nb_instances"] * self.train_config["opt_decay_iteration"],
+                self.train_config["opt_decay_rate"], staircase=True)
         else:
             learning_rate = self.train_config["opt_lr"]
 
