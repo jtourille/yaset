@@ -120,8 +120,123 @@ data section
   ``$USER/temp``, the directory ``$USER/temp/yaset-learn-YYYYMMDD`` will be
   created.
 
+training
+^^^^^^^^
+
+ ``model_type: str``
+  Specify the neural network model that you want to use. There is only one
+  choice at this time. Other models will be implemented in the next releases.
+   * ``bilstm-char-crf``: implementation of the model presented in
+     Lample et al. (2016) :cite:`Lample2016`. More information can be found
+     in the original paper. Model parameters can be set in the
+     :ref:`bilstm-char-crf section <bilstm-char-crf>` of the configuration
+     file.
+
+ ``max_iterations: int``
+  Specify the maximum number of training iterations. Training will be stopped
+  if early stopping criterion is not reached before this iteration number (see
+  ``patience`` parameter).
+
+ ``patience: int``
+  Specify the number of iterations to wait before early stop if there is no
+  performance improvement on the validation instances.
+
+ ``dev_metric: str``
+  Specify the metric used for performance computation on the validation
+  instances.
+   * ``accuracy``: standard token accuracy.
+   * ``conll``: metric which operates at the entity level. This
+     should be used with a IOB(ES) markup on Named Entity Recognition related
+     tasks. The implementation is taken for most parts from the
+     `Python adaptation`_ by Sampo Pyysalo of the original script developed
+     for the
+     `CoNLL-2003 Shared Task`_ (Tjong et al., 2003 :cite:`TjongKimSang2003`).
+
+ ``trainable_word_embeddings: bool``
+  Set this parameter to ``true`` if you want YASET to fine-tune word
+  embeddings during network training, ``false`` otherwise.
+
+ ``cpu_cores: int``
+  Specify the number of CPU cores (upper-bound) that should be used during
+  network training.
+
+ ``batch_size: int``
+  Specify the mini-batch size used during training.
+
+ ``store_matrices_on_gpu: bool``
+  Set this parameter to ``true`` if you want to keep the word embedding matrix
+  on GPU memory, ``false`` otherwise.
+
+ ``bucket_use: bool``
+  Set this parameter to ``true`` if you want to bucketize training instances
+  during network training. Bucket boundaries will be automatically computed.
+
+ ``opt_algo: str``
+  Specify the optimization algorithm used during network training. You can
+  choose between between ``adam`` (Kingma et al.,2014 :cite:`Kingma2015`)
+  or ``sgd``.
+
+ ``opt_lr: float``
+  Specify the initial learning rate applied during network training.
+
+ ``opt_gc_use: bool``
+  Set this parameter to ``true`` if you want to use gradient clipping during
+  network training, ``false`` otherwise.
+
+ ``opt_gc_type: str``
+  Specify the gradient clipping type (``clip_by_norm`` or ``clip_by_value``)
+  This will be ignored if the value of the parameter ``opt_gc_use`` is
+  ``false``.
+
+ ``opt_gs_val: float``
+  Specify the gradient clipping value. This parameter will be ignored if the
+  value for the parameter ``opt_gc_use`` is ``false``.
+
+ ``opt_decay_use: bool``
+  Set this parameter to ``true`` if you want to use learning rate decay during
+  network training, ``false`` otherwise.
+
+ ``opt_decay_rate: float``
+  Specify the decay rate (float between 0 and 1, e.g. 0.2). This parameter
+  will be ignored if the value for the parameter ``opt_decay_use`` is
+  ``false``.
+
+ ``opt_decay_iteration: int``
+  Specify the learning rate decay frequency. If you set the frequency to
+  :math:`n`, the learning rate :math:`lr` will be decayed by the rate
+  specified in the parameter ``opt_decay_iteration`` every :math:`n`
+  iterations.
+
+.. _bilstm-char-crf:
+
+bilstm-char-crf
+^^^^^^^^^^^^^^^
+These parameters are related to the neural network model presented in
+Lample et al. (2016) :cite:`Lample2016`.
+
+ ``hidden_layer_size: int``
+  Specify the main LSTM hidden layer size.
+
+ ``dropout_rate: float``
+  Specify the dropout rate to apply on input embeddings before feeding them
+  to the main LSTM.
+
+ ``use_char_embeddings: bool``
+  Set this parameter to ``true`` if you want to use character embeddings in
+  the model, ``false`` otherwise.
+
+ ``char_hidden_layer_size: int``
+  Specify the character LSTM hidden layer size. This parameter will be ignored
+  if the value for the parameter ``use_char_embeddings`` is ``false``.
+
+ ``char_embedding_size: int``
+  Specify the character embedding size. This parameter will be ignored
+  if the value for the parameter ``use_char_embeddings`` is ``false``.
+
 .. _gensim: https://radimrehurek.com/gensim/
 .. _word2vec: https://github.com/dav/word2vec
+.. _Python adaptation: https://github.com/spyysalo/conlleval.py
+.. _CoNLL-2003 Shared Task: https://www.clips.uantwerpen.be/conll2003/ner/
 .. bibliography:: refs.bib
    :filter: docname in docnames
    :style: plain
