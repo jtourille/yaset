@@ -94,7 +94,7 @@ class TrainData:
         # -----------------------------------------------------------
         # FEATURES
 
-        self.feature_use = data_params.get("feature_use")
+        self.feature_use = data_params.get("feature_data")
 
         self.feature_columns = list()
         self.feature_value_mapping = dict()

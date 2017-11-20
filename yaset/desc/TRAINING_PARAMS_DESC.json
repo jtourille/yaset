@@ -4,6 +4,9 @@
   "string_parameters": ["model_type", "dev_metric", "opt_algo"],
   "boolean_parameters": ["trainable_word_embeddings", "store_matrices_on_gpu", "bucket_use"],
   "true_cond_parameters": {
+    "feature_use": {
+      "int_parameters": ["feature_embedding_size"]
+    },
     "opt_gc_use": {
       "float_parameters": ["opt_gs_val"],
       "string_parameters": ["opt_gc_type"]

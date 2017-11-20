@@ -225,9 +225,10 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
                                         batch_size=train_params["batch_size"],
                                         nb_instances=dev_nb_examples)
 
-    logging.debug("Use features: {}".format(data_object.feature_use))
+    logging.debug("Use features: {}".format(train_params["feature_use"]))
     logging.debug("Feature columns: {}".format(data_object.feature_columns))
     logging.debug("Feature value mapping: {}".format(data_object.feature_value_mapping))
+    logging.debug("Feature embedding size: {}".format(train_params["feature_embedding_size"]))
 
     # Network parameters for **kwargs usage
     model_args = {
@@ -243,7 +244,6 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
         # Features
         "feature_columns": data_object.feature_columns,
         "feature_value_mapping": data_object.feature_value_mapping,
-        "feature_use": data_object.feature_use,
 
         # Misc
         "pl_dropout": tf.placeholder(tf.float32),

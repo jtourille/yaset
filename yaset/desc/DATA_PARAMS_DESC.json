@@ -7,9 +7,8 @@
     "dev_file_use": {
       "string_parameters": ["dev_file_path"]
     },
-    "feature_use": {
-      "string_parameters": ["feature_columns"],
-      "int_parameters": ["feature_embedding_size"]
+    "feature_data": {
+      "string_parameters": ["feature_columns"]
     }
   },
   "false_cond_parameters": {

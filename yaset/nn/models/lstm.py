@@ -121,7 +121,7 @@ class BiLSTMCRF:
                                                   dtype=tf.float32,
                                                   initializer=self._get_weight(
                                                       self.feature_value_nb,
-                                                      15),
+                                                      self.train_config["feature_embedding_size"]),
                                                   trainable=True)
 
                 if self.use_char_embeddings:
@@ -137,14 +137,15 @@ class BiLSTMCRF:
 
         with tf.device(device_str):
 
-            logging.debug("-> Embedding lookups")
-
+            logging.debug("-> Word embedding lookup")
             self.embed_words
 
             if self.feature_use:
+                logging.debug("-> Feature embedding lookup")
                 self.embed_feat
 
             if self.use_char_embeddings:
+                logging.debug("-> Character embedding lookup")
                 self.embed_chars
 
         if self.use_char_embeddings:

@@ -121,7 +121,6 @@ def test_model(working_dir, model_dir, data_object: TestData, data_params, train
         # Features
         "feature_columns": data_object.feature_columns,
         "feature_value_mapping": data_object.feature_value_mapping,
-        "feature_use": data_object.feature_use,
 
         "char_lstm_num_hidden": train_params.get("char_hidden_layer_size"),
 

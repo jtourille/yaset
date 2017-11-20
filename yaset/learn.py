@@ -157,6 +157,14 @@ def learn_model(parsed_configuration):
     for k, v in training_params.items():
         logging.debug("* {} = {}".format(k, v))
 
+    logging.debug("Current data parameters")
+    for k, v in data_params.items():
+        logging.debug("* {} = {}".format(k, v))
+
+    logging.debug("Current model parameters")
+    for k, v in model_params.items():
+        logging.debug("* {} = {}".format(k, v))
+
     train_model(current_working_directory, embedding_object, data, training_params, model_params)
 
     log_message("END - LEARNING MODEL")
