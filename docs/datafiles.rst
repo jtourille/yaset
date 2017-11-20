@@ -48,7 +48,7 @@ YASET supports two word embedding formats:
 
 If you want to use other types of embeddings, you must first convert them to
 one of these two formats. For instance, if you have computed word embeddings
-with `Glove`_ (Pennington et al., 2014 :cite:`Pennington2014`), you can
+using `Glove`_ (Pennington et al., 2014 :cite:`Pennington2014`), you can
 convert the file to word2vec text format by using the `script`_ provided
 within the gensim library.
 
