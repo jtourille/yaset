@@ -42,7 +42,7 @@ GPU Support
 -----------
 
 YASET install the non-GPU version of TensorFlow by default. If you want to
-use the GPUs with YASET, upgrade the TensorFlow package.
+use GPUs with YASET, upgrade the TensorFlow package.
 
 .. code-block:: shell
 
