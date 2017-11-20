@@ -48,6 +48,34 @@ class BiLSTMCRF:
 
         self.pl_dropout = self.train_config["pl_dropout"]
 
+        # -----------------------------------------------------------
+        # FEATURES
+
+        # Feature use flag
+        self.feature_use = self.train_config["feature_use"]
+
+        # Feature columns
+        self.feature_columns = self.train_config["feature_columns"]
+
+        # Feature value mapping
+        self.feature_value_mapping = self.train_config["feature_value_mapping"]
+
+        # Computing feature value count
+        self.feature_value_nb = 0
+        for k, v in self.feature_value_mapping.items():
+            self.feature_value_nb += len(v)
+
+        # Computing index of the first feature in the batch tensor list
+        self.feature_nb = len(self.feature_columns)
+        self.feature_first_index = len(batch) - self.feature_nb
+
+        # Linking feature-related batch elements to a list
+        self.features_links = list()
+        for i, _ in enumerate(self.feature_columns):
+            self.features_links.append(batch[self.feature_first_index + i])
+
+        # -----------------------------------------------------------
+
         # If not in dev not test phase
         if not self.reuse and not self.test:
             self.pl_emb = self.train_config["pl_emb"]
@@ -88,6 +116,14 @@ class BiLSTMCRF:
                                                          initializer=tf.random_uniform_initializer(-1.0, 1.0),
                                                          trainable=True)
 
+                if self.feature_use:
+                    self.w_feat = tf.get_variable('embedding_matrix_feats',
+                                                  dtype=tf.float32,
+                                                  initializer=self._get_weight(
+                                                      self.feature_value_nb,
+                                                      15),
+                                                  trainable=True)
+
                 if self.use_char_embeddings:
                     self.C = tf.get_variable('embedding_matrix_chars',
                                              dtype=tf.float32,
@@ -105,11 +141,17 @@ class BiLSTMCRF:
 
             self.embed_words
 
+            if self.feature_use:
+                self.embed_feat
+
             if self.use_char_embeddings:
                 self.embed_chars
 
         if self.use_char_embeddings:
             self.char_representation
+
+        if self.feature_use:
+            self.feat_vector
 
         logging.debug("-> Forward and Backward representations")
 
@@ -123,6 +165,20 @@ class BiLSTMCRF:
         if not self.reuse and not self.test:
             logging.debug("-> Optimization")
             self.optimize
+
+    @lazy_property
+    def embed_feat(self):
+        """
+        Feature embedding lookup
+        :return: tf.nn.embedding_lookup object list
+        """
+
+        lookup_list = list()
+
+        for i, item in zip(self.feature_columns, self.features_links):
+            lookup_list.append(tf.nn.embedding_lookup(self.w_feat, item, name='lookup_feat_{}'.format(i)))
+
+        return lookup_list
 
     @lazy_property
     def embed_words(self):
@@ -145,6 +201,11 @@ class BiLSTMCRF:
         embed_chars = tf.nn.embedding_lookup(self.C, self.x_chars, name='lookup_chars')
 
         return embed_chars
+
+    @lazy_property
+    def feat_vector(self):
+
+        return tf.concat(self.embed_feat, 2)
 
     @lazy_property
     def char_representation(self):
@@ -189,14 +250,24 @@ class BiLSTMCRF:
     @lazy_property
     def main_lstm(self):
 
-        # Depending on the use of characters in the final representation
-        if self.use_char_embeddings:
-            # Concatenate forward word embedding and forward character embedding representations
+        # Depending on the use of characters and/or features in the final representation
+        # Character embeddings only
+        if self.use_char_embeddings and not self.feature_use:
             input_tensor = tf.concat([self.embed_words, self.char_representation], 2)
+
+        # Feature embeddings only
+        elif not self.use_char_embeddings and self.feature_use:
+            input_tensor = tf.concat([self.embed_words, self.feat_vector], 2)
+
+        # Character and feature embeddings
+        elif self.use_char_embeddings and self.feature_use:
+            input_tensor = tf.concat([self.embed_words, self.char_representation, self.feat_vector], 2)
+
+        # Neither of them
         else:
-            # Use only forward word embedding representation
             input_tensor = self.embed_words
 
+        # Applying dropout on file embeddings
         input_tensor = tf.nn.dropout(input_tensor, 1.0 - self.pl_dropout)
 
         with tf.variable_scope('main_lstm', reuse=self.reuse):
@@ -283,7 +354,7 @@ class BiLSTMCRF:
         # TILING
 
         # Create tiling for "start" and "end" scores
-        tile = tf.tile(tf.constant(-1000.0, shape=[1, 2], dtype=tf.float32), [tf.shape(current_input[0])[0], 1])
+        tile = tf.tile(tf.constant(-10000.0, shape=[1, 2], dtype=tf.float32), [tf.shape(current_input[0])[0], 1])
 
         # Add two scores for each token in each sequence
         tiled_tensor = tf.concat([current_input[0], tile], 1)
@@ -294,8 +365,8 @@ class BiLSTMCRF:
         cur_nb_class = current_input[0].get_shape().as_list()[1]
 
         # Create start and end token unary scores
-        start_unary_scores = [[-1000.0] * cur_nb_class + [0.0, -1000.0]]
-        end_unary_tensor = [[-1000.0] * cur_nb_class + [-1000.0, 0.0]]
+        start_unary_scores = [[-10000.0] * cur_nb_class + [0.0, -10000.0]]
+        end_unary_tensor = [[-10000.0] * cur_nb_class + [-10000.0, 0.0]]
 
         # Concatenate start unary scores to the tiled vector
         tensor_start = tf.concat([start_unary_scores, tiled_tensor], 0)

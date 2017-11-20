@@ -48,18 +48,6 @@ def learn_model(parsed_configuration):
         "yaset-learn-{}".format(timestamp)
     )
 
-    i = 0
-    while os.path.isdir(current_working_directory):
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-
-        current_working_directory = os.path.join(
-            os.path.abspath(data_params.get("working_dir")),
-            "yaset-learn-{}".format(timestamp)
-        )
-        i += 1
-        if i == 10:
-            raise Exception("Unable to create a working directory")
-
     ensure_dir(current_working_directory)
 
     # ---------------------------------------------------------------
@@ -76,14 +64,6 @@ def learn_model(parsed_configuration):
     fh = logging.FileHandler(log_file, encoding="UTF-8")
     fh.setFormatter(log_format)
     log.addHandler(fh)
-
-    # -----------------------------------------------------------
-    # FEATURES - NOT FULLY IMPLEMENTED YET
-
-    feature_columns = list()
-    #
-    # if parsed_configuration.getboolean("data", "use_features"):
-    #     feature_columns = parse_feature_columns(parsed_configuration["data"]["feature_columns"])
 
     # -----------------------------------------------------------
     # LOADING AND CHECKING DATA FILES

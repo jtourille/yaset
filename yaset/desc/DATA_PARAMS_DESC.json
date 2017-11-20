@@ -8,7 +8,8 @@
       "string_parameters": ["dev_file_path"]
     },
     "feature_use": {
-      "string_parameters": ["feature_columns"]
+      "string_parameters": ["feature_columns"],
+      "int_parameters": ["feature_embedding_size"]
     }
   },
   "false_cond_parameters": {

@@ -2,6 +2,19 @@ import json
 import os
 
 
+def get_feature_columns(feature_list_str):
+    """
+    Parse the feature column parameter
+    :param feature_list_str: feature column parameter value (string)
+    :return: column list
+    """
+
+    parts = feature_list_str.split(',')
+    parts = [int(item.strip(" ")) for item in parts]
+
+    return parts
+
+
 def extract_params(config_section, param_desc_file):
     """
     Extract params from a particular section in the config file.

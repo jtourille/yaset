@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 
 from ..error import FeatureDoesNotExist
 from ..tools import ensure_dir
+from ..helpers.config import get_feature_columns
 
 
 class StatsCorpus:
@@ -90,8 +91,17 @@ class TrainData:
 
         self.singletons = None
 
+        # -----------------------------------------------------------
+        # FEATURES
+
         self.feature_use = data_params.get("feature_use")
+
         self.feature_columns = list()
+        self.feature_value_mapping = dict()
+        self.feature_nb = 0
+
+        if self.feature_use:
+            self.feature_columns = get_feature_columns(data_params.get("feature_columns"))
 
         # -----------------------------------------------------------
         # SETTING UP PATHS
@@ -120,9 +130,6 @@ class TrainData:
         self.inv_label_mapping = dict()
 
         self.char_mapping = dict()
-
-        self.feature_value_mapping = dict()
-        self.feature_nb = 0
 
     def check_input_files(self):
         """
@@ -483,6 +490,7 @@ class TrainData:
             "embedding_matrix_shape": embedding_object.embedding_matrix.shape,
             "word_mapping": embedding_object.word_mapping,
             "char_mapping": self.char_mapping,
+            "feature_use": self.feature_use,
             "feature_value_mapping": self.feature_value_mapping,
             "feature_nb": self.feature_nb,
             "feature_columns": self.feature_columns,
@@ -518,6 +526,7 @@ class TrainData:
                 if k not in attributes_train[col]:
                     logging.info("One feature value from col. #{} in dev corpus is not present in train "
                                  "corpus: {}".format(col, k))
+
                     if self.dev_file_path:
                         logging.info("Check your input files and relaunch yaset")
                     else:
@@ -727,12 +736,12 @@ class TrainData:
                 len(val_dict)
             ))
             for k, v in val_dict.items():
-                logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
+                logging.debug("-> '{}': {:,} ({:.3f}%)".format(k, v, (v / nb_attributes) * 100))
 
         logging.info("* nb. labels (col. #{}): {:,}".format(list(column_nb)[0] - 1, len(labels)))
         nb_labels = sum([v for k, v in labels.items()])
         for k, v in labels.items():
-            logging.debug("-> {}: {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
+            logging.debug("-> '{}': {:,} ({:.3f}%)".format(k, v, (v/nb_labels) * 100))
 
     @staticmethod
     def _get_feature_value_mapping(data_file, feature_columns, indexes=None):
@@ -831,9 +840,7 @@ class TrainData:
                 else:
                     labels = labels + current_labels
 
-        label_set = set()
-        for label in labels:
-            label_set.add(label)
+        label_set = set(labels)
 
         for i, label in enumerate(sorted(label_set)):
             label_mapping[label] = i
@@ -936,6 +943,11 @@ class TestData:
 
         self.char_mapping = self.data_char["char_mapping"]
 
+        # -----------------------------------------------------------
+        # Features
+
+        self.feature_use = self.data_char["feature_use"]
+
         self.feature_value_mapping = dict()
 
         for k, v in self.data_char["feature_value_mapping"].items():
@@ -943,6 +955,8 @@ class TestData:
 
         self.feature_nb = self.data_char["feature_nb"]
         self.feature_columns = self.data_char["feature_columns"]
+
+        # -----------------------------------------------------------
 
         # Fetching label mapping from training data characteristics
         self.label_mapping = self.data_char["label_mapping"]

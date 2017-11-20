@@ -118,8 +118,11 @@ def test_model(working_dir, model_dir, data_object: TestData, data_params, train
 
         "pl_dropout": tf.placeholder(tf.float32),
 
-        # "char_embedding_matrix_shape": [len(data_object.char_mapping),
-        #                                 train_params.get("char_embedding_size")],
+        # Features
+        "feature_columns": data_object.feature_columns,
+        "feature_value_mapping": data_object.feature_value_mapping,
+        "feature_use": data_object.feature_use,
+
         "char_lstm_num_hidden": train_params.get("char_hidden_layer_size"),
 
         "output_size": len(train_data_char["label_mapping"])
@@ -196,10 +199,10 @@ def test_model(working_dir, model_dir, data_object: TestData, data_params, train
             unary_scores_ = unary_scores_[:seq_len_]
 
             # Tiling and adding START and END tokens
-            start_unary_scores = [[-1000.0] * unary_scores_.shape[1] + [0.0, -1000.0]]
-            end_unary_tensor = [[-1000.0] * unary_scores_.shape[1] + [-1000.0, 0.0]]
+            start_unary_scores = [[-10000.0] * unary_scores_.shape[1] + [0.0, -10000.0]]
+            end_unary_tensor = [[-10000.0] * unary_scores_.shape[1] + [-10000.0, 0.0]]
 
-            tile = np.tile(np.array([-1000.0, -1000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
+            tile = np.tile(np.array([-10000.0, -10000.0], dtype=np.float32), [unary_scores_.shape[0], 1])
 
             tiled_tensor = np.concatenate([unary_scores_, tile], 1)
 

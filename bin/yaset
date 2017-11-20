@@ -50,18 +50,19 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
 
-    # 'Learn' subparser used to learn a new model
+    # 'LEARN' subparser: learn a new model
     parser_learn = subparsers.add_parser('LEARN', help="Learn model on train data")
     parser_learn.add_argument("--config", help="Configuration file (.ini format)", dest="config", type=str,
                               required=True)
 
-    # 'Apply' subparser used to apply a pretrained model
+    # 'APPLY' subparser: apply a pretrained model
     parser_test = subparsers.add_parser('APPLY', help="Apply model on test data")
     parser_test.add_argument("--model-path", help="Path to the model", dest="model_path", type=str, required=True)
     parser_test.add_argument("--input-file", help="Path to the tabulated test file", dest="input_file", required=True)
     parser_test.add_argument("--working-dir", help="Path where a working directory will be created", dest="working_dir",
                              required=True)
 
+    # 'CHECK-CONFIG' subparser: check configuration file
     parser_config = subparsers.add_parser('CHECK-CONFIG', help="Performs configuration file checking."
                                                                "Error will be raised if value are not correctly set.")
     parser_config.add_argument("--config", help="Configuration file (.ini format)", dest="config", type=str,
