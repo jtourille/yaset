@@ -17,11 +17,13 @@ def learn_model(parsed_configuration):
     # PARAMETER LOADING
 
     # Computing parameter description file paths
+    general_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/GENERAL_PARAMS_DESC.json')
     training_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
     data_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
     bilstmcharcrf_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/BILSTMCHARCRF_PARAMS_DESC.json')
 
     # Extracting parameters from configuration file according to parameter description files
+    general_params = extract_params(parsed_configuration["general"], general_param_desc_file)
     data_params = extract_params(parsed_configuration["data"], data_param_desc_file)
     training_params = extract_params(parsed_configuration["training"], training_param_desc_file)
 
@@ -151,22 +153,29 @@ def learn_model(parsed_configuration):
 
     log_message("END - CREATING TFRECORDS FILES")
 
-    log_message("BEGIN - LEARNING MODEL")
+    if general_params["batch_mode"]:
+        model_indexes = list(range(general_params["batch_iter"]))
+    else:
+        model_indexes = [0]
 
-    logging.debug("Current training parameters")
-    for k, v in training_params.items():
-        logging.debug("* {} = {}".format(k, v))
+    for i in model_indexes:
 
-    logging.debug("Current data parameters")
-    for k, v in data_params.items():
-        logging.debug("* {} = {}".format(k, v))
+        log_message("BEGIN - LEARNING MODEL #{:03d}".format(i + 1))
 
-    logging.debug("Current model parameters")
-    for k, v in model_params.items():
-        logging.debug("* {} = {}".format(k, v))
+        logging.debug("Current training parameters")
+        for k, v in training_params.items():
+            logging.debug("* {} = {}".format(k, v))
 
-    train_model(current_working_directory, embedding_object, data, training_params, model_params)
+        logging.debug("Current data parameters")
+        for k, v in data_params.items():
+            logging.debug("* {} = {}".format(k, v))
 
-    log_message("END - LEARNING MODEL")
+        logging.debug("Current model parameters")
+        for k, v in model_params.items():
+            logging.debug("* {} = {}".format(k, v))
+
+        train_model(current_working_directory, embedding_object, data, training_params, model_params, i + 1)
+
+        log_message("END - LEARNING MODEL #{:3d}".format(i + 1))
 
     return current_working_directory
