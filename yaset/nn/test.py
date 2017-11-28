@@ -9,6 +9,7 @@ import tensorflow as tf
 from .helpers import get_best_model
 from .models.lstm import BiLSTMCRF
 from ..data.reader import TestData
+from ..tools import ensure_dir
 
 
 def read_and_decode_test(filename_queue, feature_columns):
@@ -66,9 +67,13 @@ def read_and_decode_test(filename_queue, feature_columns):
         return tensor_list
 
 
-def test_model(working_dir, model_dir, data_object: TestData, data_params, train_params, model_params, n_jobs=1):
+def test_model(working_dir, model_dir, data_object: TestData, train_params, model_params,
+               model_index, n_jobs=1):
     """
     Apply model on test data
+    :param model_index: model index to apply
+    :param model_params: network model parameters
+    :param train_params: network training parameters
     :param working_dir: current working directory
     :param model_dir: yaset model path
     :param data_object: TestData object
@@ -220,7 +225,7 @@ def test_model(working_dir, model_dir, data_object: TestData, data_params, train
                 round(cur_percentage, 2),
             ))
 
-    target_output_file = os.path.join(working_dir, "output.conll")
+    target_output_file = os.path.join(working_dir, "output-model-{:03d}.conll".format(model_index))
     data_object.write_predictions_to_file(target_output_file, pred_sequences)
     logging.info("Writing prediction to file")
 

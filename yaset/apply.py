@@ -45,25 +45,43 @@ def apply_model(model_path, input_file, working_dir, timestamp):
 
     log_message("END - CREATING TFRECORDS FILES")
 
-    logging.info("{} BEGIN - APPLYING MODEL {}".format("=" * 10, "=" * 36))
+    log_message("BEGIN - LOADING MODEL PARAMETERS")
 
     # Load config file used during training
     parsed_configuration = configparser.ConfigParser()
     parsed_configuration.read(os.path.join(model_path, "config.ini"))
 
     # Computing parameter description file paths
+    general_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/GENERAL_PARAMS_DESC.json')
     training_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
-    data_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
     bilstmcharcrf_param_desc_file = pkg_resources.resource_filename('yaset', 'desc/BILSTMCHARCRF_PARAMS_DESC.json')
 
     # Extracting parameters from configuration file according to parameter description files
-    data_params = extract_params(parsed_configuration["data"], data_param_desc_file)
+
+    general_params = extract_params(parsed_configuration["general"], general_param_desc_file)
+    logging.info("General section: OK")
+
     training_params = extract_params(parsed_configuration["training"], training_param_desc_file)
+    logging.info("Training section: OK")
+
     if training_params["model_type"] == "bilstm-char-crf":
         model_params = extract_params(parsed_configuration["bilstm-char-crf"], bilstmcharcrf_param_desc_file)
     else:
         raise Exception("The model type you specified does not exist: {}".format(training_params["model_type"]))
 
-    test_model(current_working_directory, model_path, data, data_params, training_params, model_params)
+    if general_params["batch_mode"]:
+        model_indexes = list(range(general_params["batch_iter"]))
+        logging.info("Operating in batch mode")
+    else:
+        model_indexes = [0]
+        logging.info("Operating in single model mode")
 
-    log_message("END - APPLYING MODEL")
+    log_message("END - LOADING MODEL PARAMETERS")
+
+    for i in model_indexes:
+
+        log_message("BEGIN - APPLYING MODEL #{:03d}".format(i + 1))
+
+        test_model(current_working_directory, model_path, data, training_params, model_params, i + 1)
+
+        log_message("END - APPLYING MODEL #{:03d}".format(i + 1))
