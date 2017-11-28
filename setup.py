@@ -22,14 +22,14 @@ try:
     import tensorflow
 except ImportError:
     kw.pop()
-    kw.append('tensorflow==1.2.0')
+    kw.append('tensorflow')
 else:
     if is_gpu():
         kw.pop()
-        kw.append('tensorflow-gpu==1.2.0')
+        kw.append('tensorflow-gpu')
     else:
         kw.pop()
-        kw.append('tensorflow==1.2.0')
+        kw.append('tensorflow')
 
 setup(name='yaset',
       version='0.1',
@@ -39,7 +39,12 @@ setup(name='yaset',
       author_email='julien.tourille@limsi.fr',
       license='MIT',
       packages=find_packages(),
-      package_data={'yaset': ['desc/*.json']},
+      package_data={'yaset': [
+          'desc/BILSTMCHARCRF_PARAMS_DESC.json',
+          'desc/DATA_PARAMS_DESC.json',
+          'desc/GENERAL_PARAMS_DESC.json',
+          'desc/TRAINING_PARAMS_DESC.json'
+      ]},
       scripts=['bin/yaset'],
       zip_safe=False,
       install_requires=kw)
