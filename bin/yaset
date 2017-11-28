@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import time
+from datetime import timedelta
 
 try:
     import pkg_resources
@@ -105,6 +106,7 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
+        GENERAL_PARAMS_FILE = pkg_resources.resource_filename('yaset', 'desc/GENERAL_PARAMS_DESC.json')
         TRAINING_PARAMS_FILE = pkg_resources.resource_filename('yaset', 'desc/TRAINING_PARAMS_DESC.json')
         DATA_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/DATA_PARAMS_DESC.json')
         BILSTMCHARCRF_PARAMS_DESC_FILE = pkg_resources.resource_filename('yaset', 'desc/BILSTMCHARCRF_PARAMS_DESC.json')
@@ -141,7 +143,13 @@ if __name__ == "__main__":
         parsed_configuration = configparser.ConfigParser(allow_no_value=True)
         parsed_configuration.read(os.path.abspath(args.config))
 
+        start = time.time()
+
         current_working_directory = learn_model(parsed_configuration)
+
+        end = time.time()
+
+        logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))
 
         target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
         shutil.copy(os.path.abspath(args.config), target_model_configuration_path)
