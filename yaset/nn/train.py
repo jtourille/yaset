@@ -174,7 +174,9 @@ def _build_dev_pipeline(tfrecords_file_path, feature_columns, batch_size=None, n
         return queue_runner_list, [filename_queue, padding_queue], batch
 
 
-def train_model(working_dir, embedding_object, data_object: TrainData, train_params, model_params):
+def train_model(working_dir, embedding_object, data_object: TrainData, train_params, model_params, model_index):
+
+    model_directory = os.path.join(working_dir, "model_{:03d}".format(model_index))
 
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = train_params["cpu_cores"]
@@ -225,10 +227,10 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
                                         batch_size=train_params["batch_size"],
                                         nb_instances=dev_nb_examples)
 
-    logging.debug("Use features: {}".format(train_params["feature_use"]))
-    logging.debug("Feature columns: {}".format(data_object.feature_columns))
-    logging.debug("Feature value mapping: {}".format(data_object.feature_value_mapping))
-    logging.debug("Feature embedding size: {}".format(train_params["feature_embedding_size"]))
+    # logging.debug("Use features: {}".format(train_params["feature_use"]))
+    # logging.debug("Feature columns: {}".format(data_object.feature_columns))
+    # logging.debug("Feature value mapping: {}".format(data_object.feature_value_mapping))
+    # logging.debug("Feature embedding size: {}".format(train_params["feature_embedding_size"]))
 
     # Network parameters for **kwargs usage
     model_args = {
@@ -279,7 +281,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
     # TensorFlow model saver
-    tf_model_saver_path = os.path.join(os.path.abspath(working_dir), "tfmodels")
+    tf_model_saver_path = os.path.join(model_directory, "tfmodels")
     tf_model_saving_name = os.path.join(tf_model_saver_path, "model.ckpt")
     ensure_dir(tf_model_saver_path)
 
@@ -306,7 +308,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     train_counter_global = 0
 
     train_logger = TrainLogger()
-    train_logger_dump_filename = os.path.join(os.path.abspath(working_dir), "train_stats.json")
+    train_logger_dump_filename = os.path.join(model_directory, "train_stats.json")
 
     # Looping until max iteration is reached
     while iteration_number <= train_params["max_iterations"]:
@@ -348,7 +350,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     train_logger.save_to_file(train_logger_dump_filename)
 
     logging.debug("* Dumping data characteristics")
-    target_data_characteristics_file = os.path.join(working_dir, 'data_char.json')
+    target_data_characteristics_file = os.path.join(model_directory, 'data_char.json')
     data_object.dump_data_characteristics(target_data_characteristics_file, embedding_object)
 
     # Stopping everything gracefully
