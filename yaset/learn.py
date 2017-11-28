@@ -151,6 +151,10 @@ def learn_model(parsed_configuration):
     data.create_tfrecords_files(embedding_object, oov_strategy=embedding_oov_strategy,
                                 unk_token_rate=embedding_oov_replace_rate)
 
+    logging.debug("Dumping data characteristics")
+    target_data_characteristics_file = os.path.join(current_working_directory, 'data_char.json')
+    data.dump_data_characteristics(target_data_characteristics_file, embedding_object)
+
     log_message("END - CREATING TFRECORDS FILES")
 
     if general_params["batch_mode"]:
