@@ -134,9 +134,10 @@ class TrainLogger:
             self.iterations_log[ite] = dict()
 
 
-def compute_bucket_boundaries(sequence_lengths, batch_size):
+def compute_bucket_boundaries(sequence_lengths, batch_size, bucket_size=5):
     """
     Compute bucket boundaries based on the sequence lengths
+    :param bucket_size: bucket size
     :param sequence_lengths: sequence length to consider
     :param batch_size: mini-batch size used for learning
     :return: buckets boundaries (list)
@@ -146,7 +147,7 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
     max_len = max(sequence_lengths)
 
     start = 0
-    end = 10
+    end = bucket_size
     done = 0
 
     final_buckets = list()
@@ -169,12 +170,12 @@ def compute_bucket_boundaries(sequence_lengths, batch_size):
                 final_buckets.append(end)
 
             done += current_bucket
-            start += 10
-            end += 10
+            start += bucket_size
+            end += bucket_size
 
             current_bucket = 0
         else:
-            end += 10
+            end += bucket_size
 
         final_buckets = sorted(list(set(final_buckets)))
 
