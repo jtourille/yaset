@@ -344,14 +344,8 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
 
     logging.info("Iteration scores\n\n{}\n".format(train_logger.get_score_table()))
 
-    logging.info("Saving model characteristics")
-
-    logging.debug("* Dumping train logger")
+    logging.debug("Dumping train statistics to file")
     train_logger.save_to_file(train_logger_dump_filename)
-
-    logging.debug("* Dumping data characteristics")
-    target_data_characteristics_file = os.path.join(model_directory, 'data_char.json')
-    data_object.dump_data_characteristics(target_data_characteristics_file, embedding_object)
 
     # Stopping everything gracefully
     logging.info("Stopping everything gracefully (or at least trying to)")
