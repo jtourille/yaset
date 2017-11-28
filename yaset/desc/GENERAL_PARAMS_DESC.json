@@ -1,0 +1,11 @@
+{
+  "int_parameters": [],
+  "float_parameters": [],
+  "string_parameters": [],
+  "boolean_parameters": [],
+  "true_cond_parameters": {
+    "batch_mode": {
+      "int_parameters": ["batch_iter"]
+    }
+  }
+}
