@@ -169,4 +169,10 @@ if __name__ == "__main__":
         if not os.path.isdir(working_dir):
             raise NotADirectoryError("The working directory you specified does not exist: {}".format(working_dir))
 
+        start = time.time()
+
         apply_model(model_path, input_file, working_dir, timestamp)
+
+        end = time.time()
+
+        logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))
