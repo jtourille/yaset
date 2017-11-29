@@ -80,6 +80,12 @@ def apply_model(model_path, input_file, working_dir, timestamp):
 
     for i in model_indexes:
 
+        current_model_path = os.path.join(model_path, "model_{:03d}".format(i + 1))
+
+        if not os.path.isdir(current_model_path):
+            logging.info("Skipping model #{:03d}: model has been deleted".format(i + 1))
+            continue
+
         log_message("BEGIN - APPLYING MODEL #{:03d}".format(i + 1))
 
         test_model(current_working_directory, model_path, data, training_params, model_params, i + 1)

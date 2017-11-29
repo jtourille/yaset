@@ -9,7 +9,6 @@ import tensorflow as tf
 from .helpers import get_best_model
 from .models.lstm import BiLSTMCRF
 from ..data.reader import TestData
-from ..tools import ensure_dir
 
 
 def read_and_decode_test(filename_queue, feature_columns):
@@ -108,7 +107,7 @@ def test_model(working_dir, model_dir, data_object: TestData, train_params, mode
     queue_runner_list, queue_list, \
         batch = _build_test_pipeline(tfrecords_file_path,
                                      data_object.feature_columns,
-                                     batch_size=64,
+                                     batch_size=32,
                                      nb_instances=nb_examples)
 
     # Network parameters for **kwargs usage
@@ -145,8 +144,8 @@ def test_model(working_dir, model_dir, data_object: TestData, train_params, mode
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
     # Retrieving model filename based on training statistics
-    tf_model_saver_path = os.path.join(model_dir, "tfmodels")
-    train_stats_file = os.path.join(model_dir, "train_stats.json")
+    tf_model_saver_path = os.path.join(model_dir, "model_{:03d}".format(model_index), "tfmodels")
+    train_stats_file = os.path.join(model_dir, "model_{:03d}".format(model_index), "train_stats.json")
     best_filename = os.path.join(tf_model_saver_path, get_best_model(train_stats_file))
 
     saver = tf.train.Saver()
@@ -188,7 +187,7 @@ def test_model(working_dir, model_dir, data_object: TestData, train_params, mode
 
         x_id, x_len, y_pred = sess.run([batch[0], batch[1], model.prediction], feed_dict=params)
 
-        counter += 64
+        counter += 32
         cur_percentage = (float(counter) / nb_examples) * 100
 
         for seq_id_, seq_len_, unary_scores_ in zip(x_id, x_len, y_pred):
