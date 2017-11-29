@@ -58,22 +58,22 @@ def _params_recur(config_section, param_desc):
 
     if param_desc.get("true_cond_parameters"):
         for p in param_desc.get("true_cond_parameters"):
-            if config_section[p] == "true":
+            if config_section[p].lower() == "true":
                 all_params[p] = True
                 cond_params = _params_recur(config_section, param_desc["true_cond_parameters"][p])
                 for k, v in cond_params.items():
                     all_params[k] = v
-            elif config_section[p] == "false":
+            elif config_section[p].lower() == "false":
                 all_params[p] = False
 
     if param_desc.get("false_cond_parameters"):
         for p in param_desc.get("false_cond_parameters"):
-            if config_section[p] == "false":
+            if config_section[p].lower() == "false":
                 all_params[p] = False
                 cond_params = _params_recur(config_section, param_desc["false_cond_parameters"][p])
                 for k, v in cond_params.items():
                     all_params[k] = v
-            elif config_section[p] == "true":
+            elif config_section[p].lower() == "true":
                 all_params[p] = True
 
     if param_desc.get("string_cond_parameters"):
