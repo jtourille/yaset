@@ -181,7 +181,7 @@ def train_model(working_dir, embedding_object, data_object: TrainData, train_par
     config_tf = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     config_tf.intra_op_parallelism_threads = train_params["cpu_cores"]
     config_tf.inter_op_parallelism_threads = train_params["cpu_cores"]
-    config_tf.gpu_options.allow_growth = True
+    config_tf.gpu_options.allow_growth = False
 
     logging.info("Building computation graph")
 
