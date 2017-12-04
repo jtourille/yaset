@@ -139,20 +139,13 @@ if __name__ == "__main__":
                 os.path.abspath(args.config)
             ))
 
-        # Creating a configparser parser and parsing configuration
-        parsed_configuration = configparser.ConfigParser(allow_no_value=True)
-        parsed_configuration.read(os.path.abspath(args.config))
-
         start = time.time()
 
-        current_working_directory = learn_model(parsed_configuration)
+        current_working_directory = learn_model(args.config)
 
         end = time.time()
 
         logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))
-
-        target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
-        shutil.copy(os.path.abspath(args.config), target_model_configuration_path)
 
     elif args.subparser_name == "APPLY":
 

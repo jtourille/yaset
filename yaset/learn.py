@@ -1,6 +1,8 @@
+import configparser
 import importlib
 import logging
 import os
+import shutil
 import time
 
 import pkg_resources
@@ -11,7 +13,11 @@ from .nn.train import train_model
 from .tools import ensure_dir, log_message
 
 
-def learn_model(parsed_configuration):
+def learn_model(config_filepath):
+
+    # Creating a configparser parser and parsing configuration
+    parsed_configuration = configparser.ConfigParser(allow_no_value=True)
+    parsed_configuration.read(os.path.abspath(config_filepath))
 
     # ---------------------------------------------------------------
     # PARAMETER LOADING
@@ -51,6 +57,12 @@ def learn_model(parsed_configuration):
     )
 
     ensure_dir(current_working_directory)
+
+    # ---------------------------------------------------------------
+    # COPYING CONFIG FILE
+
+    target_model_configuration_path = os.path.join(os.path.abspath(current_working_directory), "config.ini")
+    shutil.copy(os.path.abspath(config_filepath), target_model_configuration_path)
 
     # ---------------------------------------------------------------
     # LOGGING
