@@ -10,7 +10,7 @@ class UnknownTokenAlreadyExists(Error):
         self.message = message
 
 
-class FeatureDoesNotExist(Error):
+class TrainDevInconsistency(Error):
 
     def __init__(self, message):
         self.message = message

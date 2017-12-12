@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
-from ..error import FeatureDoesNotExist
+from ..error import TrainDevInconsistency
 from ..tools import ensure_dir
 from ..helpers.config import get_feature_columns
 
@@ -250,6 +250,7 @@ class TrainData:
             train_indexes = list(range(sequence_nb_train))
             dev_indexes = list(range(sequence_nb_dev))
 
+            logging.debug("Checking split")
             self._check_split(train_indexes, dev_indexes, self.train_file_path, self.dev_file_path,
                               self.feature_columns)
 
@@ -532,8 +533,22 @@ class TrainData:
                     else:
                         logging.info("Try to relaunch yaset after changing the random seed")
 
-                    raise FeatureDoesNotExist("A feature value at col. #{} from dev instances is not present in train"
-                                              " instances: {}".format(col, k))
+                    raise TrainDevInconsistency("A feature value at col. #{} from dev instances is not present in"
+                                                " train instances: {}".format(col, k))
+
+        for label, _ in labels_dev.items():
+            if label not in labels_train:
+                logging.info("One label from the dev instances is not present in the train instances: {}".format(
+                    label
+                ))
+
+                if self.dev_file_path:
+                    logging.info("Check your input files and relaunch yaset")
+                else:
+                    logging.info("Try to relaunch yaset after changing the random seed")
+
+                raise TrainDevInconsistency("One label from the dev instances is not present in the train "
+                                            "instances: {}".format(label))
 
     @staticmethod
     def _get_singletons(data_file, indexes=None, lower_input=None, replace_digits=None):
@@ -1252,8 +1267,8 @@ class TestData:
                                  "training {}:".format(col, k))
                     logging.info("Check your input files and relaunch yaset")
 
-                    raise FeatureDoesNotExist("A feature value at col. #{} from test instances was not seen during "
-                                              "training: {}".format(col, k))
+                    raise Exception("A feature value at col. #{} from test instances was not seen during "
+                                    "training: {}".format(col, k))
 
     @staticmethod
     def _get_attributes_and_labels(data_file, indexes, features_columns):
