@@ -1,7 +1,7 @@
 {
   "int_parameters": [],
   "float_parameters": [],
-  "string_parameters": [],
+  "string_parameters": ["experiment_name"],
   "boolean_parameters": [],
   "true_cond_parameters": {
     "batch_mode": {

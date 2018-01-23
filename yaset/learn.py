@@ -2,6 +2,7 @@ import configparser
 import importlib
 import logging
 import os
+import re
 import shutil
 import time
 
@@ -51,10 +52,23 @@ def learn_model(config_filepath):
     # Creating the current working directory based on the top working directory
     timestamp = time.strftime("%Y%m%d-%H%M%S")
 
-    current_working_directory = os.path.join(
-        os.path.abspath(data_params.get("working_dir")),
-        "yaset-learn-{}".format(timestamp)
-    )
+    experiment_suffix = general_params["experiment_name"]
+    if not re.match("^[a-zA-Z0-9\-]+$", experiment_suffix):
+        raise Exception("The experiment name contains characters that are not allowed: {}".format(
+            experiment_suffix
+        ))
+
+    if len(experiment_suffix) > 0:
+        current_working_directory = os.path.join(
+            os.path.abspath(data_params.get("working_dir")),
+            "yaset-learn-{}-{}".format(experiment_suffix, timestamp)
+        )
+
+    else:
+        current_working_directory = os.path.join(
+            os.path.abspath(data_params.get("working_dir")),
+            "yaset-learn-{}".format(timestamp)
+        )
 
     ensure_dir(current_working_directory)
 
@@ -192,6 +206,6 @@ def learn_model(config_filepath):
 
         train_model(current_working_directory, embedding_object, data, training_params, model_params, i + 1)
 
-        log_message("END - LEARNING MODEL #{:3d}".format(i + 1))
+        log_message("END - LEARNING MODEL #{:03d}".format(i + 1))
 
     return current_working_directory
