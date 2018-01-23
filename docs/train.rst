@@ -25,6 +25,7 @@ Configuration Parameters
 
 The configuration file is divided into 3 parts:
 
+* **general**: parameters related to the experiment (see below for further explanations)
 * **data**: parameters related to training instances and word embedding models
 * **training**: parameters related to model training (e.g. learning algorithm,
   evaluation metrics or mini-batch size)
@@ -33,6 +34,22 @@ The configuration file is divided into 3 parts:
   modify the model parameters (e.g. hidden layer sizes or character
   embedding size)
 
+
+general section
+^^^^^^^^^^^^^^^
+
+ ``batch_mode: bool``
+  Set this parameter to ``true`` if you want to perform multiple runs of
+  the same experiment. This allows to check the model robustness to random
+  seed initial value (Reimers et al. (2017) :cite:`Reimers2017`).
+
+ ``batch_iter: int``
+  Specify the number of runs to perform. This will be ignored if the value
+  of the parameter ``batch_mode`` is ``false``
+
+ ``experiment_name: str``
+  Specify the experiment name. The name will be used for directory and file
+  naming.
 
 data section
 ^^^^^^^^^^^^
