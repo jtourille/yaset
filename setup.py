@@ -31,13 +31,13 @@ else:
         kw.pop()
         kw.append('tensorflow')
 
-setup(name='yaset',
-      version='0.1',
+setup(name='YASET',
+      version='0.3',
       description='Yet Another SEquence Tagger',
       url='https://github.com/jtourille/yaset',
       author='Julien Tourille',
       author_email='julien.tourille@limsi.fr',
-      license='MIT',
+      license='GPL-3.0',
       packages=find_packages(),
       package_data={'yaset': [
           'desc/BILSTMCHARCRF_PARAMS_DESC.json',
