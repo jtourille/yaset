@@ -63,6 +63,7 @@ class TrainData:
         self.dev_random_seed_use = data_params.get("dev_random_seed_use")
         self.dev_random_seed_value = None
         self.dev_ratio = None
+        self.dev_file_path = None
 
         if self.dev_file_use:
             self.dev_file_path = os.path.abspath(data_params.get("dev_file_path"))
