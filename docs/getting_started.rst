@@ -46,7 +46,7 @@ use GPUs with YASET, upgrade the TensorFlow package.
 
 .. code-block:: shell
 
-   $ pip install tensorflow-gpu==1.2.0
+   $ pip install tensorflow-gpu==1.3.0
 
 
 Upgrade
