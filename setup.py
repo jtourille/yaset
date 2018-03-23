@@ -12,7 +12,7 @@ def is_gpu():
 
 kw = [
     'scikit_learn',
-    'gensim',
+    'gensim==3.2.0',
     'numpy',
     'prettytable',
     'tensorflow<=1.3.0'
