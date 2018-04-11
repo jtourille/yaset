@@ -812,7 +812,7 @@ def _iobes_to_iob_seq(sequence):
     return final_bioes
 
 
-def convert_to_one_class(source_file, target_file):
+def convert_to_one_class(source_file, target_file, category):
     """
     Convert multi-class IOBES scheme into one-class IOBES scheme
     :param source_file: input file path
@@ -829,16 +829,16 @@ def convert_to_one_class(source_file, target_file):
 
                 parts = line.rstrip("\n").split('\t')
                 if parts[-1].startswith("I"):
-                    parts[-1] = "I-UNK"
+                    parts[-1] = "I-{}".format(category)
 
                 elif parts[-1].startswith("B"):
-                    parts[-1] = "B-UNK"
+                    parts[-1] = "B-{}".format(category)
 
                 elif parts[-1].startswith("E"):
-                    parts[-1] = "E-UNK"
+                    parts[-1] = "E-{}".format(category)
 
                 elif parts[-1].startswith("S"):
-                    parts[-1] = "S-UNK"
+                    parts[-1] = "S-{}".format(category)
 
                 elif parts[-1].startswith("O"):
                     pass
@@ -891,6 +891,8 @@ if __name__ == "__main__":
                                      required=True)
     parser_multi_to_one.add_argument("--output-file", help="Output CoNLL file", dest="output_file", type=str,
                                      required=True)
+    parser_multi_to_one.add_argument("--category", help="Category used during transformation",
+                                     dest="category", type=str, required=True)
 
     args = parser.parse_args()
 
@@ -988,7 +990,7 @@ if __name__ == "__main__":
         start = time.time()
 
         logging.info("Converting file")
-        convert_to_one_class(args.input_file, args.output_file)
+        convert_to_one_class(args.input_file, args.output_file, args.category)
 
         end = time.time()
 
