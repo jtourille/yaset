@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+import argparse
+import logging
+import os
+import shutil
+import sys
+import time
+
+from yaset.utils.path import ensure_dir
+from yaset.train import train_model
+
+if __name__ == "__main__":
+
+    start = time.time()
+
+    parser = argparse.ArgumentParser()
+
+    subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
+                                       help="Valid sub-commands", dest="subparser_name")
+
+    parser_train = subparsers.add_parser("TRAIN",
+                                         help="Train a NER model")
+    parser_train.add_argument("--option-file",
+                              help="Training option file",
+                              dest="option_file", type=str, required=True)
+    parser_train.add_argument("--output-dir",
+                              help="Output directory where files will be written",
+                              dest="output_dir", type=str, required=True)
+    parser_train.add_argument("--overwrite",
+                              help="Overwrite existing output directory",
+                              dest="overwrite", action="store_true")
+
+    parser_train.add_argument("--debug", action='store_true')
+
+    args = parser.parse_args()
+
+    log = logging.getLogger('')
+    log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    # Setting debug level
+    if args.debug:
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
+
+    # Adding a stdout handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(log_format)
+    log.addHandler(ch)
+
+    if args.subparser_name == "TRAIN":
+
+        if not os.path.isfile(os.path.abspath(args.option_file)):
+            raise FileNotFoundError("The option file does not exist: {}".format(
+                os.path.abspath(args.option_file)
+            ))
+
+        if not args.overwrite:
+            if os.path.isdir(os.path.abspath(args.output_dir)):
+                raise FileNotFoundError("The output dir already exists: {}".format(
+                    os.path.abspath(args.output_dir)
+                ))
+
+        if os.path.isdir(os.path.abspath(args.output_dir)):
+            logging.debug("Overwriting output directory")
+            shutil.rmtree(os.path.abspath(args.output_dir))
+
+        ensure_dir(directory=os.path.abspath(args.output_dir))
+
+        train_model(option_file=os.path.abspath(args.option_file),
+                    output_dir=os.path.abspath(args.output_dir))
