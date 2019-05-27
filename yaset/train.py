@@ -7,14 +7,17 @@ import joblib
 import torch
 from torch.utils.data import DataLoader
 
+from .nn.crf import allowed_transitions
 from .nn.embedding import Embedder
+from .nn.lstmcrf import LSTMCRF
+from .utils.config import replace_auto
 from .utils.data import NERDataset, collate_ner
+from .utils.eval import eval_ner
 from .utils.logging import TrainLogger
 from .utils.mapping import extract_mappings_and_pretrained_matrix
-from .nn.lstmcrf import LSTMCRF
-from .nn.crf import allowed_transitions
 from .utils.training import Trainer
-from .utils.eval import eval_ner
+
+import _jsonnet
 
 
 def create_dataloader(mappings: Dict = None,
@@ -52,8 +55,10 @@ def create_dataloader(mappings: Dict = None,
 def train_model(option_file: str = None,
                 output_dir: str = None):
 
-    with open(os.path.abspath(option_file), "r", encoding="UTF-8") as input_file:
-        options = json.load(input_file)
+    options_json = _jsonnet.evaluate_file(option_file, native_callbacks={})
+    options = json.loads(options_json)
+
+    replace_auto(options=options)
 
     mappings, pretrained_matrix = extract_mappings_and_pretrained_matrix(options=options)
 
@@ -89,10 +94,15 @@ def train_model(option_file: str = None,
                         pretrained_matrix=pretrained_matrix,
                         mappings=mappings)
 
-    constraints = allowed_transitions("BIO", {v: k for k, v in mappings["ner_labels"].items()})
+    constraints = allowed_transitions(options.get("data").get("format"),
+                                      {v: k for k, v in mappings["ner_labels"].items()})
 
     model = LSTMCRF(embedder=embedder,
                     constraints=constraints,
+                    ffnn_hidden_layer_use=options.get("network_structure").get("ffnn").get("use"),
+                    ffnn_hidden_layer_size=options.get("network_structure").get("ffnn").get("hidden_layer_size"),
+                    ffnn_activation_function=options.get("network_structure").get("ffnn").get("activation_function"),
+                    ffnn_input_dropout_rate=options.get("training").get("ffnn_input_dropout_rate"),
                     input_size=embedder.embedding_size,
                     input_dropout_rate=options.get("training").get("input_dropout_rate"),
                     lstm_cell_size=options.get("network_structure").get("cell_size"),
@@ -100,7 +110,8 @@ def train_model(option_file: str = None,
                     lstm_layer_dropout_rate=options.get("training").get("lstm_layer_dropout_rate"),
                     mappings=mappings,
                     nb_layers=options.get("network_structure").get("nb_layers"),
-                    num_labels=len(mappings["ner_labels"]))
+                    num_labels=len(mappings["ner_labels"]),
+                    skip_connections=options.get("network_structure").get("skip_connections"))
 
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=options.get("training").get("lr_rate"))
