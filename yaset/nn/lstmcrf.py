@@ -186,3 +186,20 @@ class LSTMCRF(nn.Module):
         pred_converted = [item for seq in pred_converted for item in seq]
 
         return {"pred": pred_converted, "gs": gs_converted}
+
+    def infer_labels(self, batch, cuda):
+
+        inverted_label_mapping = {v: k for k, v in self.mappings["ner_labels"].items()}
+
+        if cuda:
+            batch["mask"] = batch["mask"].cuda()
+
+        logits = self.forward(batch=batch, cuda=cuda)
+        best_paths = self.crf.viterbi_tags(logits, batch["mask"])
+        pred = [best_path for best_path, _ in best_paths]
+        pred_converted = list()
+
+        for path in pred:
+            pred_converted.append([inverted_label_mapping.get(item) for item in path])
+
+        return pred_converted
