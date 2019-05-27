@@ -22,6 +22,24 @@ def extract_ner_labels(instance_file: str = None):
     return ner_labels
 
 
+def extract_char_list(instance_file: str = None):
+
+    char_set = set()
+
+    with open(os.path.abspath(instance_file), "r", encoding="UTF-8") as input_file:
+        for line in input_file:
+            if re.match("^$", line):
+                continue
+
+            parts = line.rstrip("\n").split("\t")
+            for char in parts[0]:
+                char_set.add(char)
+
+    char_set = sorted(list(char_set))
+
+    return char_set
+
+
 def extract_mappings_and_pretrained_matrix(options: dict = None,
                                            unk_symbol: str = "<unk>",
                                            pad_symbol: str = "<pad>") -> (dict, np.ndarray):
@@ -53,10 +71,11 @@ def extract_mappings_and_pretrained_matrix(options: dict = None,
     ner_labels = extract_ner_labels(instance_file=options.get("data").get("train_file"))
     all_mappings["ner_labels"] = {v: k for k, v in enumerate(ner_labels)}
 
-    all_mappings["characters"] = {
-        "<bow>": 256,
-        "<eow>": 257,
-        "<pad>": 258
-    }
+    char_list = extract_char_list(instance_file=options.get("data").get("train_file"))
+    char_list.append("<bow>")
+    char_list.append("<eow>")
+    char_list.append("<pad>")
+
+    all_mappings["characters"] = {k: i for i, k in enumerate(char_list)}
 
     return all_mappings, pretrained_matrix

@@ -39,13 +39,15 @@ class Embedder(nn.Module):
                 raise Exception("The pretrained matrix object is None")
 
         if self.embeddings_options.get("characters").get("use"):
-            self.char_embedding = nn.Embedding(259,
+            self.char_embedding = nn.Embedding(len(mappings["characters"]),
                                                self.embeddings_options.get("characters").get("char_embedding_size"))
             self.char_cnn = CharCNN(char_embedding=self.char_embedding,
                                     filters=self.embeddings_options.get("characters").get("cnn_filters"))
 
             for kernel_size, num_filters in self.embeddings_options.get("characters").get("cnn_filters"):
                 self.embedding_size += num_filters
+
+            torch.nn.init.xavier_uniform_(self.char_embedding.weight)
 
         if self.embeddings_options.get("elmo").get("use"):
             self.elmo_embedding = Elmo(self.embeddings_options.get("elmo").get("options_path"),

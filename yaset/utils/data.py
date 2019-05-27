@@ -49,8 +49,9 @@ class NERDataset(Dataset):
             token_label = item[-1]
 
             token_lower = token_form.lower()
-            token_encoded = token_form.encode("UTF-8")
-            token_chars = [self.mappings["characters"].get("<bow>")] + [char for char in token_encoded] + \
+            token_chars = [self.mappings["characters"].get("<bow>")] + \
+                          [self.mappings["characters"].get(char) for char in token_form
+                           if self.mappings["characters"].get(char)] + \
                           [self.mappings["characters"].get("<eow>")]
 
             new_instance["tok"].append(
