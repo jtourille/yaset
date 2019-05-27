@@ -1,14 +1,19 @@
 import torch.nn as nn
-from .lstm import LSTM
-from .embedding import Embedder
+
 from .crf import ConditionalRandomField
+from .embedding import Embedder
+from .lstm import LSTM
 
 
 class LSTMCRF(nn.Module):
 
     def __init__(self,
-                 embedder: Embedder = None,
                  constraints: list = None,
+                 embedder: Embedder = None,
+                 ffnn_hidden_layer_use: bool = None,
+                 ffnn_hidden_layer_size: int = None,
+                 ffnn_activation_function: str = None,
+                 ffnn_input_dropout_rate: float = None,
                  input_size: int = None,
                  input_dropout_rate: float = None,
                  lstm_cell_size: int = None,
@@ -16,10 +21,16 @@ class LSTMCRF(nn.Module):
                  lstm_layer_dropout_rate: int = None,
                  mappings: dict = None,
                  nb_layers: int = None,
-                 num_labels: int = None):
+                 num_labels: int = None,
+                 skip_connections: bool = False):
         super().__init__()
 
+        self.constraints = constraints
         self.embedder = embedder
+        self.ffnn_hidden_layer_use = ffnn_hidden_layer_use
+        self.ffnn_hidden_layer_size = ffnn_hidden_layer_size
+        self.ffnn_activation_function = ffnn_activation_function
+        self.ffnn_input_dropout_rate = ffnn_input_dropout_rate
         self.input_size = input_size
         self.input_dropout_rate = input_dropout_rate
         self.lstm_cell_size = lstm_cell_size
@@ -28,15 +39,46 @@ class LSTMCRF(nn.Module):
         self.mappings = mappings
         self.nb_layers = nb_layers
         self.num_labels = num_labels
+        self.skip_connections = skip_connections
 
         self.lstm_layer_input_size = self.lstm_hidden_size * 2 + self.input_size
 
         self.lstm_stack = self.create_lstm_stack()
-        self.projection_layer = nn.Sequential(
-            nn.Linear(self.lstm_hidden_size * 2, self.num_labels)
-        )
+        self.projection_layer = self.create_final_layer()
 
         self.crf: nn.Module = ConditionalRandomField(num_tags=self.num_labels, constraints=constraints)
+
+    def create_final_layer(self):
+
+        if self.ffnn_hidden_layer_use:
+            if self.ffnn_hidden_layer_size == -1:
+                current_ffnn_hidden_layer_size = self.lstm_hidden_size
+            else:
+                current_ffnn_hidden_layer_size = self.ffnn_hidden_layer_size
+
+            module_list = list()
+            module_list.append(nn.Linear(self.lstm_hidden_size * 2, current_ffnn_hidden_layer_size))
+
+            if self.ffnn_activation_function == "relu":
+                module_list.append(nn.ReLU())
+
+            elif self.ffnn_activation_function == "tanh":
+                module_list.append(nn.Tanh())
+
+            else:
+                raise Exception("The activation function is not supported: {}".format(self.ffnn_activation_function))
+
+            module_list.append(nn.Dropout(p=self.ffnn_input_dropout_rate))
+            module_list.append(nn.Linear(current_ffnn_hidden_layer_size, self.num_labels))
+
+            projection_layer = nn.Sequential(*module_list)
+
+        else:
+            projection_layer = nn.Sequential(
+                nn.Linear(self.lstm_hidden_size * 2, self.num_labels)
+            )
+
+        return projection_layer
 
     def create_lstm_stack(self):
 
@@ -54,7 +96,10 @@ class LSTMCRF(nn.Module):
             if layer_idx + 1 == self.nb_layers:
                 skip_connection = False
             else:
-                skip_connection = True
+                if self.skip_connections:
+                    skip_connection = True
+                else:
+                    skip_connection = False
 
             layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
                                           lstm_cell_size=self.lstm_cell_size,
