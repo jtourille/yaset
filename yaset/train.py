@@ -11,6 +11,7 @@ from .nn.crf import allowed_transitions
 from .nn.embedding import Embedder
 from .nn.lstmcrf import LSTMCRF
 from .utils.config import replace_auto
+import shutil
 from .utils.data import NERDataset, collate_ner
 from .utils.eval import eval_ner
 from .utils.logging import TrainLogger
@@ -55,7 +56,10 @@ def create_dataloader(mappings: Dict = None,
 def train_model(option_file: str = None,
                 output_dir: str = None):
 
-    options_json = _jsonnet.evaluate_file(option_file, native_callbacks={})
+    target_json_file = os.path.join(os.path.abspath(output_dir), "options.json")
+    shutil.copy(os.path.abspath(option_file), target_json_file)
+
+    options_json = _jsonnet.evaluate_file(option_file)
     options = json.loads(options_json)
 
     replace_auto(options=options)
@@ -66,6 +70,11 @@ def train_model(option_file: str = None,
         target_pretrained_matrix_file = os.path.join(os.path.abspath(output_dir), "pretrained_matrix.pkl")
         logging.debug("Dumping pretrained matrix to disk: {}".format(target_pretrained_matrix_file))
         joblib.dump(pretrained_matrix, target_pretrained_matrix_file)
+
+        target_pretrained_matrix_size_file = os.path.join(os.path.abspath(output_dir), "pretrained_matrix_size.json")
+        logging.debug("Dumping pretrained matrix size to disk: {}".format(target_pretrained_matrix_size_file))
+        with open(target_pretrained_matrix_size_file, "w", encoding="UTF-8") as output_file:
+            json.dump(pretrained_matrix.shape, output_file)
 
     target_mapping_file = os.path.join(os.path.abspath(output_dir), "mappings.json")
     logging.debug("Dumping mappings to disk: {}".format(target_mapping_file))
@@ -92,6 +101,7 @@ def train_model(option_file: str = None,
     logging.info("Building model")
     embedder = Embedder(embeddings_options=options.get("embeddings"),
                         pretrained_matrix=pretrained_matrix,
+                        pretrained_matrix_size=pretrained_matrix.shape,
                         mappings=mappings)
 
     constraints = allowed_transitions(options.get("data").get("format"),

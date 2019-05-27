@@ -15,11 +15,13 @@ class Embedder(nn.Module):
 
     def __init__(self, embeddings_options: dict = None,
                  pretrained_matrix: np.ndarray = None,
+                 pretrained_matrix_size: (int, int) = None,
                  mappings: dict = None):
         super().__init__()
 
         self.embeddings_options = embeddings_options
         self.pretrained_embedding = None
+        self.pretrained_matrix_size = pretrained_matrix_size
         self.mappings = mappings
 
         self.char_embedding = None
@@ -30,13 +32,12 @@ class Embedder(nn.Module):
         self.embedding_size = 0
 
         if self.embeddings_options.get("pretrained").get("use"):
+            logging.debug("Creating embedding object and loading pretrained matrix")
+            self.pretrained_embedding = nn.Embedding(self.pretrained_matrix_size[0], self.pretrained_matrix_size[1])
+            self.embedding_size += self.pretrained_embedding.weight.size(1)
+
             if pretrained_matrix is not None:
-                logging.debug("Creating embedding object and loading pretrained matrix")
-                self.pretrained_embedding = nn.Embedding(pretrained_matrix.shape[0], pretrained_matrix.shape[1])
                 self.pretrained_embedding.weight.data.copy_(torch.from_numpy(pretrained_matrix))
-                self.embedding_size += self.pretrained_embedding.weight.size(1)
-            else:
-                raise Exception("The pretrained matrix object is None")
 
         if self.embeddings_options.get("characters").get("use"):
             self.char_embedding = nn.Embedding(len(mappings["characters"]),
