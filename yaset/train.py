@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shutil
 from typing import Tuple, Dict
 
 import joblib
@@ -11,7 +12,6 @@ from .nn.crf import allowed_transitions
 from .nn.embedding import Embedder
 from .nn.lstmcrf import LSTMCRF
 from .utils.config import replace_auto
-import shutil
 from .utils.data import NERDataset, collate_ner
 from .utils.eval import eval_ner
 from .utils.logging import TrainLogger
@@ -56,7 +56,7 @@ def create_dataloader(mappings: Dict = None,
 def train_model(option_file: str = None,
                 output_dir: str = None):
 
-    target_json_file = os.path.join(os.path.abspath(output_dir), "options.json")
+    target_json_file = os.path.join(os.path.abspath(output_dir), "options.jsonnet")
     shutil.copy(os.path.abspath(option_file), target_json_file)
 
     options_json = _jsonnet.evaluate_file(option_file)
@@ -64,7 +64,9 @@ def train_model(option_file: str = None,
 
     replace_auto(options=options)
 
-    mappings, pretrained_matrix = extract_mappings_and_pretrained_matrix(options=options)
+    mappings, pretrained_matrix = extract_mappings_and_pretrained_matrix(options=options,
+                                                                         output_dir=output_dir)
+    pretrained_matrix_size = None
 
     if pretrained_matrix is not None:
         target_pretrained_matrix_file = os.path.join(os.path.abspath(output_dir), "pretrained_matrix.pkl")
@@ -75,6 +77,8 @@ def train_model(option_file: str = None,
         logging.debug("Dumping pretrained matrix size to disk: {}".format(target_pretrained_matrix_size_file))
         with open(target_pretrained_matrix_size_file, "w", encoding="UTF-8") as output_file:
             json.dump(pretrained_matrix.shape, output_file)
+
+        pretrained_matrix_size = pretrained_matrix.shape
 
     target_mapping_file = os.path.join(os.path.abspath(output_dir), "mappings.json")
     logging.debug("Dumping mappings to disk: {}".format(target_mapping_file))
@@ -101,7 +105,7 @@ def train_model(option_file: str = None,
     logging.info("Building model")
     embedder = Embedder(embeddings_options=options.get("embeddings"),
                         pretrained_matrix=pretrained_matrix,
-                        pretrained_matrix_size=pretrained_matrix.shape,
+                        pretrained_matrix_size=pretrained_matrix_size,
                         mappings=mappings)
 
     constraints = allowed_transitions(options.get("data").get("format"),

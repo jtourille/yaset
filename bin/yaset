@@ -5,9 +5,11 @@ import os
 import shutil
 import sys
 import time
+from datetime import timedelta
 
-from yaset.utils.path import ensure_dir
+from yaset.tools.conll import convert_spaces_to_tabulations, convert_labels
 from yaset.train import train_model
+from yaset.utils.path import ensure_dir
 
 if __name__ == "__main__":
 
@@ -15,8 +17,41 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--debug", action='store_true')
+
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
+
+    parser_labels = subparsers.add_parser("CONVERT-LABELS",
+                                          help="Convert NER tagging scheme")
+    parser_labels.add_argument("--input-file",
+                               help="Input CoNLL file",
+                               dest="input_file", type=str, required=True)
+    parser_labels.add_argument("--output-file",
+                               help="Output CoNLL file",
+                               dest="output_file", type=str, required=True)
+    parser_labels.add_argument("--input-label-type",
+                               help="Label type for the input CoNLL file",
+                               dest="input_label_type", type=str, required=True, choices=["IOB1"])
+    parser_labels.add_argument("--output-label-type",
+                               help="Label type for the output CoNLL file",
+                               dest="output_label_type", type=str, required=True, choices=["BIOUL"])
+    parser_labels.add_argument("--overwrite",
+                               help="Overwrite existing output file",
+                               dest="overwrite", action="store_true")
+
+    parser_spaces = subparsers.add_parser("CONVERT-SPACES",
+                                          help="Convert CoNLL files with spaces as column separators into "
+                                               "CoNLL files with tabulations as column separators.")
+    parser_spaces.add_argument("--input-file",
+                               help="Input CoNLL file (with spaces)",
+                               dest="input_file", type=str, required=True)
+    parser_spaces.add_argument("--output-file",
+                               help="Output CoNLL file (with tabulations)",
+                               dest="output_file", type=str, required=True)
+    parser_spaces.add_argument("--overwrite",
+                               help="Overwrite existing output file",
+                               dest="overwrite", action="store_true")
 
     parser_train = subparsers.add_parser("TRAIN",
                                          help="Train a NER model")
@@ -29,8 +64,6 @@ if __name__ == "__main__":
     parser_train.add_argument("--overwrite",
                               help="Overwrite existing output directory",
                               dest="overwrite", action="store_true")
-
-    parser_train.add_argument("--debug", action='store_true')
 
     args = parser.parse_args()
 
@@ -69,3 +102,41 @@ if __name__ == "__main__":
 
         train_model(option_file=os.path.abspath(args.option_file),
                     output_dir=os.path.abspath(args.output_dir))
+
+    elif args.subparser_name == "CONVERT-SPACES":
+
+        if not os.path.isfile(os.path.abspath(args.input_file)):
+            raise FileNotFoundError("The input file does not exist: {}".format(
+                os.path.abspath(args.input_file)
+            ))
+
+        if not args.overwrite:
+            if os.path.isfile(os.path.abspath(args.output_file)):
+                raise FileNotFoundError("The output file already exists: {}".format(
+                    os.path.abspath(args.output_file)
+                ))
+
+        convert_spaces_to_tabulations(input_file=os.path.abspath(args.input_file),
+                                      output_file=os.path.abspath(args.output_file))
+
+    elif args.subparser_name == "CONVERT-LABELS":
+
+        if not os.path.isfile(os.path.abspath(args.input_file)):
+            raise FileNotFoundError("The input file does not exist: {}".format(
+                os.path.abspath(args.input_file)
+            ))
+
+        if not args.overwrite:
+            if os.path.isfile(os.path.abspath(args.output_file)):
+                raise FileNotFoundError("The output file already exists: {}".format(
+                    os.path.abspath(args.output_file)
+                ))
+
+        convert_labels(input_file=os.path.abspath(args.input_file),
+                       output_file=os.path.abspath(args.output_file),
+                       input_label_type=args.input_label_type,
+                       output_label_type=args.output_label_type)
+
+    end = time.time()
+
+    logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))

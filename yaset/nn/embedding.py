@@ -2,8 +2,8 @@ import logging
 
 import numpy as np
 import torch
-import torch.functional as F
 import torch.nn as nn
+import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
 from pytorch_pretrained_bert.modeling import BertModel
 from pytorch_pretrained_bert.tokenization import BertTokenizer
@@ -81,14 +81,7 @@ class Embedder(nn.Module):
             to_concat.append(elmo_embed["elmo_representations"][0])
 
         if self.bert_embedding:
-            bert_embed = self.bert_embedding.encode(batch["str"], is_tokenized=True)
-            bert_embed = bert_embed[:, 1:-1, :]
-            bert_embed = torch.FloatTensor(bert_embed)
-            if cuda:
-                bert_embed = bert_embed.cuda()
-            bert_embed = bert_embed.view(-1, 1024)
-            bert_embed = self.bert_projection(bert_embed)
-            bert_embed = bert_embed.view(batch["size"], -1, self.bert_projection_size)
+            bert_embed = self.bert_embedding(batch["str"], cuda)
             to_concat.append(bert_embed)
 
         final_output = torch.cat(to_concat, 2)
@@ -98,7 +91,9 @@ class Embedder(nn.Module):
 
 class BertEmbeddings(nn.Module):
 
-    def __init__(self, model_name: str = None, do_lower_case: bool = None,
+    def __init__(self,
+                 model_name: str = None,
+                 do_lower_case: bool = None,
                  vocab_file: str = None):
         super().__init__()
 
@@ -113,6 +108,7 @@ class BertEmbeddings(nn.Module):
     def forward(self, sequence_list, cuda):
 
         with torch.no_grad():
+
             all_token_pieces = list()
             all_indices = list()
 
