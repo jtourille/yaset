@@ -85,11 +85,16 @@ class LSTMCRF(nn.Module):
         layer_idx = 0
 
         layers = nn.ModuleDict()
+        if self.nb_layers == 1:
+            skip_connection = False
+        else:
+            skip_connection = True
+
         layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
                                       lstm_cell_size=self.lstm_cell_size,
                                       input_dropout_rate=self.input_dropout_rate,
                                       input_size=self.input_size,
-                                      skip_connection=True)
+                                      skip_connection=skip_connection)
         layer_idx += 1
 
         while layer_idx < self.nb_layers:
