@@ -3,6 +3,9 @@ import re
 
 import numpy as np
 from gensim.models.word2vec import Word2Vec
+from gensim.scripts.glove2word2vec import glove2word2vec
+from gensim.models import KeyedVectors
+import logging
 
 
 def extract_ner_labels(instance_file: str = None):
@@ -42,7 +45,8 @@ def extract_char_list(instance_file: str = None):
 
 def extract_mappings_and_pretrained_matrix(options: dict = None,
                                            unk_symbol: str = "<unk>",
-                                           pad_symbol: str = "<pad>") -> (dict, np.ndarray):
+                                           pad_symbol: str = "<pad>",
+                                           output_dir: str = None) -> (dict, np.ndarray):
 
     all_mappings = dict()
     pretrained_matrix = None
@@ -62,8 +66,26 @@ def extract_mappings_and_pretrained_matrix(options: dict = None,
                 vector = np.random.rand(1, pretrained_matrix.shape[1])
                 pretrained_matrix = np.append(pretrained_matrix, vector, axis=0)
 
+        elif pretrained_configuration.get("format") == "glove":
+            source_glove_filepath = os.path.abspath(pretrained_configuration.get("model_path"))
+            target_w2v_filepath = os.path.join(os.path.abspath(output_dir), "model.w2v")
+
+            logging.debug("Converting Glove embeddings to word2vec format")
+            _ = glove2word2vec(source_glove_filepath, target_w2v_filepath)
+
+            embedding_obj = KeyedVectors.load_word2vec_format(target_w2v_filepath)
+            all_mappings["tokens"] = [pad_symbol, unk_symbol] + embedding_obj.wv.index2word
+            all_mappings["tokens"] = {v: k for k, v in enumerate(all_mappings["tokens"])}
+
+            pretrained_matrix = embedding_obj.wv.syn0
+            for _ in range(2):
+                vector = np.random.rand(1, pretrained_matrix.shape[1])
+                pretrained_matrix = np.append(pretrained_matrix, vector, axis=0)
+
+            os.remove(target_w2v_filepath)
+
         else:
-            raise Exception("YASET supports only gensim embeddings")
+            raise Exception("Unsupported embedding type: {}".format(pretrained_configuration.get("format")))
 
     else:
         all_mappings["tokens"] = dict()
