@@ -123,27 +123,34 @@ class Trainer:
                 if param.grad is None:
                     continue
 
+                values = param.grad.clone().cpu().data.numpy()
+                values = values[~np.isnan(values)]
+
                 self.train_logger.add_scalar(
                     name="grad_mean/" + param_name,
-                    value=param.grad.data.mean(),
+                    value=values.mean(),
                     global_step=self.global_step,
                 )
                 self.train_logger.add_scalar(
                     name="grad_std/" + param_name,
-                    value=param.grad.data.std(),
+                    value=values.std(),
                     global_step=self.global_step,
                 )
 
             if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_train:
                 for param_name, param in self.model.named_parameters():
+
+                    values = param.clone().cpu().data.numpy()
+                    values = values[~np.isnan(values)]
+
                     self.train_logger.add_scalar(
                         name="parameter_mean/" + param_name,
-                        value=param.data.mean(),
+                        value=values.mean(),
                         global_step=self.global_step,
                     )
                     self.train_logger.add_scalar(
                         name="parameter_std/" + param_name,
-                        value=param.data.std(),
+                        value=values.std(),
                         global_step=self.global_step,
                     )
 
@@ -198,7 +205,8 @@ class Trainer:
                     )
 
             eval_payload = self.eval_function(eval_payload=eval_payload)
-            self.scheduler.step(eval_payload["main"])
+            if self.scheduler is not None:
+                self.scheduler.step(eval_payload["main"])
 
             self.train_logger.add_dev_score(idx_iteration=idx_iteration,
                                             dev_score=eval_payload["main"])
