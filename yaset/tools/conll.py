@@ -1,4 +1,6 @@
 import re
+import copy
+import os
 
 
 def convert_spaces_to_tabulations(input_file: str = None,
@@ -116,6 +118,29 @@ def extract_tag_cat(label):
         return "O", None
     else:
         return label.split("-")
+
+
+def load_sentences(input_file: str = None):
+
+    all_sentences = list()
+
+    with open(os.path.abspath(input_file), "r", encoding="UTF-8") as i_file:
+        sentence_buffer = list()
+
+        for line in i_file:
+            if re.match("^$", line):
+                if len(sentence_buffer) > 0:
+                    all_sentences.append(copy.deepcopy(sentence_buffer))
+                    sentence_buffer.clear()
+                continue
+
+            token = line.split("\t")[0]
+            sentence_buffer.append(token)
+
+        if len(sentence_buffer) > 0:
+            all_sentences.append(copy.deepcopy(sentence_buffer))
+
+    return all_sentences
 
 
 def extract_entities_conll2003(input_labels: list = None):
