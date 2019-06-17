@@ -1,11 +1,12 @@
 import logging
+import os
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
-from pytorch_pretrained_bert.modeling import BertModel
+from pytorch_pretrained_bert.modeling import BertModel, load_tf_weights_in_bert, BertConfig
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 from .cnn import CharCNN
@@ -16,7 +17,8 @@ class Embedder(nn.Module):
     def __init__(self, embeddings_options: dict = None,
                  pretrained_matrix: np.ndarray = None,
                  pretrained_matrix_size: (int, int) = None,
-                 mappings: dict = None):
+                 mappings: dict = None,
+                 embedding_root_dir: str = None):
         super().__init__()
 
         self.embeddings_options = embeddings_options
@@ -51,17 +53,32 @@ class Embedder(nn.Module):
             torch.nn.init.xavier_uniform_(self.char_embedding.weight)
 
         if self.embeddings_options.get("elmo").get("use"):
-            self.elmo_embedding = Elmo(self.embeddings_options.get("elmo").get("options_path"),
-                                       self.embeddings_options.get("elmo").get("weight_path"), 1, dropout=0.0,
+            weight_file = os.path.join(embedding_root_dir, "elmo",
+                                       os.path.basename(self.embeddings_options.get("elmo").get("weight_path")))
+            options_file = os.path.join(embedding_root_dir, "elmo",
+                                        os.path.basename(self.embeddings_options.get("elmo").get("options_path")))
+
+            self.elmo_embedding = Elmo(options_file,
+                                       weight_file, 1, dropout=0.0,
                                        requires_grad=False)
             self.embedding_size += 1024
 
         if self.embeddings_options.get("bert").get("use"):
+            model_path = os.path.join(embedding_root_dir, "bert",
+                                      os.path.basename(self.embeddings_options.get("bert").get("model_file")))
+            vocab_file = os.path.join(embedding_root_dir, "bert",
+                                      os.path.basename(self.embeddings_options.get("bert").get("vocab_file")))
+            config_file = os.path.join(embedding_root_dir, "bert",
+                                       os.path.basename(self.embeddings_options.get("bert").get("config_file")))
+
             self.bert_embedding = BertEmbeddings(
-                model_name=self.embeddings_options.get("bert").get("model_path"),
+                model_type=self.embeddings_options.get("bert").get("type"),
+                model_path=model_path,
+                model_config=config_file,
                 do_lower_case=self.embeddings_options.get("bert").get("do_lower_case"),
-                vocab_file=self.embeddings_options.get("bert").get("vocab_file"),
-                fine_tune=self.embeddings_options.get("bert").get("fine_tune")
+                vocab_file=vocab_file,
+                fine_tune=self.embeddings_options.get("bert").get("fine_tune"),
+                only_final_layer=embeddings_options.get("bert").get("only_final_layer")
             )
             self.embedding_size += self.bert_embedding.hidden_size
 
@@ -94,23 +111,41 @@ class Embedder(nn.Module):
 class BertEmbeddings(nn.Module):
 
     def __init__(self,
-                 model_name: str = None,
+                 model_path: str = None,
+                 model_type: str = None,
+                 model_config: str = None,
                  do_lower_case: bool = None,
                  vocab_file: str = None,
-                 fine_tune: bool = False):
+                 fine_tune: bool = False,
+                 only_final_layer: bool = False):
         super().__init__()
 
-        self.model_name = model_name
+        self.model_path = model_path
+        self.model_type = model_type
+        self.model_config = model_config
         self.do_lower_case = do_lower_case
         self.vocab_file = vocab_file
         self.fine_tune = fine_tune
+        self.only_final_layer = only_final_layer
 
         self.tokenizer = BertTokenizer.from_pretrained(self.vocab_file, do_lower_case=self.do_lower_case)
-        self.model = BertModel.from_pretrained(self.model_name)
+
+        if self.model_type == "tensorflow":
+            self.config = BertConfig(vocab_size_or_config_json_file=self.model_config)
+            self.model = BertModel(self.config)
+            load_tf_weights_in_bert(self.model, self.model_path)
+
+        elif self.model_type == "pytorch":
+            self.config = BertConfig(vocab_size_or_config_json_file=self.model_config)
+            self.model = BertModel(self.config)
+            _ = torch.load(self.model_path, map_location='cpu')
+        else:
+            raise Exception
 
         self.weights = nn.Parameter(torch.randn(self.model.config.num_hidden_layers), requires_grad=True)
 
         self.hidden_size = self.model.config.hidden_size
+        self.model.eval()
 
     def forward(self, sequence_list, cuda):
 
@@ -119,15 +154,20 @@ class BertEmbeddings(nn.Module):
 
         else:
             with torch.no_grad():
+                self.model.eval()
                 selected_encoders_layers = self.compute_embeddings(sequence_list, cuda)
 
-        softmaxed_weights = F.softmax(self.weights, dim=0)
-        weighted_sum = torch.mul(selected_encoders_layers[0], softmaxed_weights[0])
+        if self.only_final_layer:
+            return selected_encoders_layers[-1]
 
-        for i, layer in enumerate(selected_encoders_layers[1:], start=1):
-            weighted_sum = torch.add(weighted_sum, torch.mul(selected_encoders_layers[i], softmaxed_weights[i]))
+        else:
+            softmaxed_weights = F.softmax(self.weights, dim=0)
+            weighted_sum = torch.mul(selected_encoders_layers[0], softmaxed_weights[0])
 
-        return weighted_sum
+            for i, layer in enumerate(selected_encoders_layers[1:], start=1):
+                weighted_sum = torch.add(weighted_sum, torch.mul(selected_encoders_layers[i], softmaxed_weights[i]))
+
+            return weighted_sum
 
     def compute_embeddings(self, sequence_list, cuda):
 
@@ -193,9 +233,9 @@ class BertEmbeddings(nn.Module):
         )
 
         selected_encoders_layers = list()
-        for layer in all_encoders_layers:
+        if self.only_final_layer:
             selected_layer = list()
-            for a, i in zip(layer, tensor_all_indices):
+            for a, i in zip(all_encoders_layers[-1], tensor_all_indices):
                 selected = torch.index_select(a, 0, i)
 
                 if selected.size(0) < max_seq_len_str:
@@ -207,5 +247,21 @@ class BertEmbeddings(nn.Module):
                 selected_layer.append(selected.unsqueeze(0))
             selected_layer = torch.cat(selected_layer, 0)
             selected_encoders_layers.append(selected_layer)
+
+        else:
+            for layer in all_encoders_layers:
+                selected_layer = list()
+                for a, i in zip(layer, tensor_all_indices):
+                    selected = torch.index_select(a, 0, i)
+
+                    if selected.size(0) < max_seq_len_str:
+                        padding = torch.zeros(max_seq_len_str - selected.size(0), selected.size(1))
+                        if cuda:
+                            padding = padding.cuda()
+                        selected = torch.cat([selected, padding], 0)
+
+                    selected_layer.append(selected.unsqueeze(0))
+                selected_layer = torch.cat(selected_layer, 0)
+                selected_encoders_layers.append(selected_layer)
 
         return selected_encoders_layers
