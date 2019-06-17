@@ -17,6 +17,7 @@ from .utils.eval import eval_ner
 from .utils.logging import TrainLogger
 from .utils.mapping import extract_mappings_and_pretrained_matrix
 from .utils.training import Trainer
+from .utils.copy import copy_embedding_models
 
 import _jsonnet
 
@@ -66,6 +67,10 @@ def train_model(option_file: str = None,
 
     mappings, pretrained_matrix = extract_mappings_and_pretrained_matrix(options=options,
                                                                          output_dir=output_dir)
+
+    copy_embedding_models(embeddings_options=options.get("embeddings"),
+                          output_dir=output_dir)
+
     pretrained_matrix_size = None
 
     if pretrained_matrix is not None:
@@ -106,7 +111,8 @@ def train_model(option_file: str = None,
     embedder = Embedder(embeddings_options=options.get("embeddings"),
                         pretrained_matrix=pretrained_matrix,
                         pretrained_matrix_size=pretrained_matrix_size,
-                        mappings=mappings)
+                        mappings=mappings,
+                        embedding_root_dir=output_dir)
 
     constraints = allowed_transitions(options.get("data").get("format"),
                                       {v: k for k, v in mappings["ner_labels"].items()})
@@ -129,15 +135,20 @@ def train_model(option_file: str = None,
 
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=options.get("training").get("lr_rate"))
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode=options.get("training").get("lr_scheduler").get("mode"),
-        factor=options.get("training").get("lr_scheduler").get("factor"),
-        patience=options.get("training").get("lr_scheduler").get("patience"),
-        verbose=options.get("training").get("lr_scheduler").get("verbose"),
-        threshold=options.get("training").get("lr_scheduler").get("threshold"),
-        threshold_mode=options.get("training").get("lr_scheduler").get("threshold_mode")
-    )
+
+    if options.get("training").get("lr_scheduler").get("use"):
+        logging.debug("Activating learning rate scheduling")
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode=options.get("training").get("lr_scheduler").get("mode"),
+            factor=options.get("training").get("lr_scheduler").get("factor"),
+            patience=options.get("training").get("lr_scheduler").get("patience"),
+            verbose=options.get("training").get("lr_scheduler").get("verbose"),
+            threshold=options.get("training").get("lr_scheduler").get("threshold"),
+            threshold_mode=options.get("training").get("lr_scheduler").get("threshold_mode")
+        )
+    else:
+        scheduler = None
 
     if options.get("training").get("cuda"):
         logging.info("Switching to cuda")
