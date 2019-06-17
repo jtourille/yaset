@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="YASET",
-    version="0.1",
+    version="0.5",
     author="Julien Tourille",
     author_email="julien.tourille@cea.fr",
     description="Yet Another SEquence Tagger",
