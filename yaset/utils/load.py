@@ -70,7 +70,8 @@ def load_model(model_dir: str = None,
                     num_labels=len(mappings["ner_labels"]),
                     skip_connections=options.get("network_structure").get("skip_connections"))
 
-    torch.load(model_file, map_location='cpu')
+    logging.debug("Loading weights")
+    model.load_state_dict(torch.load(model_file, map_location='cpu'))
 
     if cuda:
         logging.info("Switching to cuda")
