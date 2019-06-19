@@ -33,9 +33,9 @@ local data_dir = "/path/to/data";
         "ffnn_input_dropout_rate": 0.2,
         "optimizer": "adam",
         "lr_rate": 0.001,
-        "max_iterations": 1,
-        "patience": 1,
-        "cuda": false,
+        "max_iterations": 100,
+        "patience": 10,
+        "cuda": true,
         "train_batch_size": 32,
         "clip_grad_norm": 5.0,
         "test_batch_size": 32,
@@ -74,26 +74,13 @@ local data_dir = "/path/to/data";
       "options_path": data_dir + "/elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
     },
     "bert":{
-        "use": false,
-        "fine_tune": true,
-        "type": "tensorflow",
+        "use": true,
+        "fine_tune": false,
+        "type": "pytorch",
         "do_lower_case": false,
-        "model_root_dir": data_dir + "/bert/biobert_v1.1_pubmed",
-        "model_file": "model.ckpt-1000000.index",
-        "vocab_file": "vocab.txt",
-        "config_file": "bert_config.json",
+        "model_file": data_dir + "/bert/pytorch/bert-base-cased.tar.gz",
+        "vocab_file": data_dir + "/bert/pytorch/bert-base-cased-vocab.txt",
         "only_final_layer": false
-    },
-//    "bert":{
-//        "use": true,
-//        "fine_tune": true,
-//        "type": "pytorch",
-//        "do_lower_case": false,
-//        "model_root_dir": data_dir + "/bert/pytorch/bert-base-cased",
-//        "model_file": "pytorch_model.bin",
-//        "vocab_file": "bert-base-cased-vocab.txt",
-//        "config_file": "bert_config.json",
-//        "only_final_layer": false
-//    },
+    }
   }
 }
