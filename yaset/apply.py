@@ -48,3 +48,5 @@ def apply_model(model_dir: str = None,
                 o_line = "{}\t{}\n".format(o_line, labels_flatten[labels_index])
 
                 o_file.write(o_line)
+
+                labels_index += 1
