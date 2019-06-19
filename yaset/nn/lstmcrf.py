@@ -41,7 +41,10 @@ class LSTMCRF(nn.Module):
         self.num_labels = num_labels
         self.skip_connections = skip_connections
 
-        self.lstm_layer_input_size = self.lstm_hidden_size * 2 + self.input_size
+        if self.skip_connections:
+            self.lstm_layer_input_size = self.lstm_hidden_size * 2 + self.input_size
+        else:
+            self.lstm_layer_input_size = self.lstm_hidden_size * 2
 
         self.lstm_stack = self.create_lstm_stack()
         self.projection_layer = self.create_final_layer()
@@ -51,13 +54,18 @@ class LSTMCRF(nn.Module):
     def create_final_layer(self):
 
         if self.ffnn_hidden_layer_use:
+            if self.nb_layers == 0:
+                current_input_projection = self.input_size
+            else:
+                current_input_projection = self.lstm_hidden_size * 2
+
             if self.ffnn_hidden_layer_size == -1:
-                current_ffnn_hidden_layer_size = self.lstm_hidden_size
+                current_ffnn_hidden_layer_size = current_input_projection // 2
             else:
                 current_ffnn_hidden_layer_size = self.ffnn_hidden_layer_size
 
             module_list = list()
-            module_list.append(nn.Linear(self.lstm_hidden_size * 2, current_ffnn_hidden_layer_size))
+            module_list.append(nn.Linear(current_input_projection, current_ffnn_hidden_layer_size))
 
             if self.ffnn_activation_function == "relu":
                 module_list.append(nn.ReLU())
@@ -74,44 +82,50 @@ class LSTMCRF(nn.Module):
             projection_layer = nn.Sequential(*module_list)
 
         else:
+            if self.nb_layers == 0:
+                current_input_projection = self.input_size
+            else:
+                current_input_projection = self.lstm_hidden_size * 2
+
             projection_layer = nn.Sequential(
-                nn.Linear(self.lstm_hidden_size * 2, self.num_labels)
+                nn.Linear(current_input_projection, self.num_labels)
             )
 
         return projection_layer
 
     def create_lstm_stack(self):
 
-        layer_idx = 0
-
         layers = nn.ModuleDict()
-        if self.nb_layers == 1:
-            skip_connection = False
-        else:
-            skip_connection = True
 
-        layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
-                                      lstm_cell_size=self.lstm_cell_size,
-                                      input_dropout_rate=self.input_dropout_rate,
-                                      input_size=self.input_size,
-                                      skip_connection=skip_connection)
-        layer_idx += 1
-
-        while layer_idx < self.nb_layers:
-            if layer_idx + 1 == self.nb_layers:
+        if self.nb_layers > 0:
+            layer_idx = 0
+            if self.nb_layers == 1:
                 skip_connection = False
             else:
-                if self.skip_connections:
-                    skip_connection = True
-                else:
-                    skip_connection = False
+                skip_connection = True
 
             layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
                                           lstm_cell_size=self.lstm_cell_size,
-                                          input_dropout_rate=self.lstm_layer_dropout_rate,
-                                          input_size=self.lstm_layer_input_size,
+                                          input_dropout_rate=self.input_dropout_rate,
+                                          input_size=self.input_size,
                                           skip_connection=skip_connection)
             layer_idx += 1
+
+            while layer_idx < self.nb_layers:
+                if layer_idx + 1 == self.nb_layers:
+                    skip_connection = False
+                else:
+                    if self.skip_connections:
+                        skip_connection = True
+                    else:
+                        skip_connection = False
+
+                layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
+                                              lstm_cell_size=self.lstm_cell_size,
+                                              input_dropout_rate=self.lstm_layer_dropout_rate,
+                                              input_size=self.lstm_layer_input_size,
+                                              skip_connection=skip_connection)
+                layer_idx += 1
 
         return layers
 
@@ -131,13 +145,9 @@ class LSTMCRF(nn.Module):
         batch_len_sort, batch_perm_idx = batch["tok_len"].sort(descending=True)
         batch_embed = batch_embed[batch_perm_idx]
 
-        layer_output = None
+        layer_output = batch_embed
         for layer_idx, layer in self.lstm_stack.items():
-            if int(layer_idx) == 0:
-                layer_output = layer(batch_embed, batch_embed, batch_len_sort)
-
-            else:
-                layer_output = layer(batch_embed, layer_output, batch_len_sort)
+            layer_output = layer(batch_embed, layer_output, batch_len_sort)
 
         # Sorting back the input to the original order
         _, r = batch_perm_idx.sort()
