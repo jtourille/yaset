@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
-from pytorch_pretrained_bert.modeling import BertModel, load_tf_weights_in_bert, BertConfig
+from pytorch_pretrained_bert.modeling import BertModel
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 from .cnn import CharCNN
@@ -68,13 +68,10 @@ class Embedder(nn.Module):
                                       os.path.basename(self.embeddings_options.get("bert").get("model_file")))
             vocab_file = os.path.join(embedding_root_dir, "bert",
                                       os.path.basename(self.embeddings_options.get("bert").get("vocab_file")))
-            config_file = os.path.join(embedding_root_dir, "bert",
-                                       os.path.basename(self.embeddings_options.get("bert").get("config_file")))
 
             self.bert_embedding = BertEmbeddings(
                 model_type=self.embeddings_options.get("bert").get("type"),
                 model_path=model_path,
-                model_config=config_file,
                 do_lower_case=self.embeddings_options.get("bert").get("do_lower_case"),
                 vocab_file=vocab_file,
                 fine_tune=self.embeddings_options.get("bert").get("fine_tune"),
@@ -113,7 +110,6 @@ class BertEmbeddings(nn.Module):
     def __init__(self,
                  model_path: str = None,
                  model_type: str = None,
-                 model_config: str = None,
                  do_lower_case: bool = None,
                  vocab_file: str = None,
                  fine_tune: bool = False,
@@ -122,7 +118,6 @@ class BertEmbeddings(nn.Module):
 
         self.model_path = model_path
         self.model_type = model_type
-        self.model_config = model_config
         self.do_lower_case = do_lower_case
         self.vocab_file = vocab_file
         self.fine_tune = fine_tune
@@ -131,21 +126,18 @@ class BertEmbeddings(nn.Module):
         self.tokenizer = BertTokenizer.from_pretrained(self.vocab_file, do_lower_case=self.do_lower_case)
 
         if self.model_type == "tensorflow":
-            self.config = BertConfig(vocab_size_or_config_json_file=self.model_config)
-            self.model = BertModel(self.config)
-            load_tf_weights_in_bert(self.model, self.model_path)
+            self.model = BertModel.from_pretrained(self.model_path, from_tf=True)
 
         elif self.model_type == "pytorch":
-            self.config = BertConfig(vocab_size_or_config_json_file=self.model_config)
-            self.model = BertModel(self.config)
-            _ = torch.load(self.model_path, map_location='cpu')
+            self.model = BertModel.from_pretrained(self.model_path)
+
         else:
             raise Exception
 
-        self.weights = nn.Parameter(torch.randn(self.model.config.num_hidden_layers), requires_grad=True)
+        self.weights = nn.Parameter(torch.FloatTensor([0.0] * self.model.config.num_hidden_layers), requires_grad=True)
+        self.gamma = nn.Parameter(torch.FloatTensor([1.0]), requires_grad=True)
 
         self.hidden_size = self.model.config.hidden_size
-        self.model.eval()
 
     def forward(self, sequence_list, cuda):
 
@@ -167,7 +159,9 @@ class BertEmbeddings(nn.Module):
             for i, layer in enumerate(selected_encoders_layers[1:], start=1):
                 weighted_sum = torch.add(weighted_sum, torch.mul(selected_encoders_layers[i], softmaxed_weights[i]))
 
-            return weighted_sum
+            scaled_weighted_sum = torch.mul(weighted_sum, self.gamma)
+
+            return scaled_weighted_sum
 
     def compute_embeddings(self, sequence_list, cuda):
 
