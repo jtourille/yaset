@@ -49,7 +49,6 @@ class Trainer:
                  len_dataset_train: int = None,
                  len_dataset_dev: int = None,
                  log_to_stdout_step: float = 0.05,
-                 mappings: dict = None,
                  max_iterations: int = 100,
                  model: nn.Module = None,
                  optimizer: torch.optim.Optimizer = None,
@@ -66,7 +65,6 @@ class Trainer:
         self.len_dataset_train = len_dataset_train
         self.len_dataset_dev = len_dataset_dev
         self.log_to_stdout_step = log_to_stdout_step
-        self.mappings = mappings
         self.max_iterations = max_iterations
         self.model = model
         self.optimizer = optimizer
