@@ -91,7 +91,7 @@ def extract_mappings_and_pretrained_matrix(options: dict = None,
         all_mappings["tokens"] = dict()
 
     ner_labels = extract_ner_labels(instance_file=options.get("data").get("train_file"))
-    all_mappings["ner_labels"] = {v: k for k, v in enumerate(ner_labels)}
+    all_mappings["ner_labels"] = {v: k for k, v in enumerate(sorted(ner_labels))}
 
     char_list = extract_char_list(instance_file=options.get("data").get("train_file"))
     char_list.append("<bow>")
