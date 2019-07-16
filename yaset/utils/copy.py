@@ -39,3 +39,12 @@ def copy_embedding_models(embeddings_options: dict = None,
 
             shutil.copytree(embeddings_options.get("bert").get("model_file"), target_model_dir)
             shutil.copy(embeddings_options.get("bert").get("vocab_file"), target_model_vocab)
+
+    if embeddings_options.get("pretrained").get("use"):
+        target_subdir = os.path.join(os.path.abspath(output_dir), "pretrained")
+        ensure_dir(target_subdir)
+
+        target_model = os.path.join(target_subdir,
+                                    os.path.basename(embeddings_options.get("pretrained").get("model_path")))
+
+        shutil.copy(embeddings_options.get("pretrained").get("model_path"), target_model)
