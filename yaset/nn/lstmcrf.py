@@ -15,7 +15,7 @@ class LSTMCRF(nn.Module):
                  ffnn_activation_function: str = None,
                  ffnn_input_dropout_rate: float = None,
                  input_size: int = None,
-                 input_dropout_rate: float = None,
+                 lstm_input_dropout_rate: float = None,
                  lstm_cell_size: int = None,
                  lstm_hidden_size: int = None,
                  lstm_layer_dropout_rate: int = None,
@@ -32,7 +32,7 @@ class LSTMCRF(nn.Module):
         self.ffnn_activation_function = ffnn_activation_function
         self.ffnn_input_dropout_rate = ffnn_input_dropout_rate
         self.input_size = input_size
-        self.input_dropout_rate = input_dropout_rate
+        self.lstm_input_dropout_rate = lstm_input_dropout_rate
         self.lstm_cell_size = lstm_cell_size
         self.lstm_hidden_size = lstm_hidden_size
         self.lstm_layer_dropout_rate = lstm_layer_dropout_rate
@@ -41,13 +41,13 @@ class LSTMCRF(nn.Module):
         self.num_labels = num_labels
         self.skip_connections = skip_connections
 
-        if self.skip_connections:
-            self.lstm_layer_input_size = self.lstm_hidden_size * 2 + self.input_size
-        else:
-            self.lstm_layer_input_size = self.lstm_hidden_size * 2
-
         self.lstm_stack = self.create_lstm_stack()
         self.projection_layer = self.create_final_layer()
+
+        if self.nb_layers == 0:
+            self.ensemble_output_size = self.input_size
+        else:
+            self.ensemble_output_size = self.lstm_hidden_size * 2
 
         self.crf: nn.Module = ConditionalRandomField(num_tags=self.num_labels, constraints=constraints)
 
@@ -102,11 +102,14 @@ class LSTMCRF(nn.Module):
             if self.nb_layers == 1:
                 skip_connection = False
             else:
-                skip_connection = True
+                if self.skip_connections:
+                    skip_connection = True
+                else:
+                    skip_connection = False
 
             layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
                                           lstm_cell_size=self.lstm_cell_size,
-                                          input_dropout_rate=self.input_dropout_rate,
+                                          input_dropout_rate=self.lstm_input_dropout_rate,
                                           input_size=self.input_size,
                                           skip_connection=skip_connection)
             layer_idx += 1
@@ -120,10 +123,15 @@ class LSTMCRF(nn.Module):
                     else:
                         skip_connection = False
 
+                if self.skip_connections:
+                    lstm_layer_input_size = self.lstm_hidden_size * 2 + self.input_size
+                else:
+                    lstm_layer_input_size = self.lstm_hidden_size * 2
+
                 layers[str(layer_idx)] = LSTM(lstm_hidden_size=self.lstm_hidden_size,
                                               lstm_cell_size=self.lstm_cell_size,
                                               input_dropout_rate=self.lstm_layer_dropout_rate,
-                                              input_size=self.lstm_layer_input_size,
+                                              input_size=lstm_layer_input_size,
                                               skip_connection=skip_connection)
                 layer_idx += 1
 
@@ -135,7 +143,8 @@ class LSTMCRF(nn.Module):
         batch = kwargs["batch"]
 
         if cuda:
-            batch["chr"] = batch["chr"].cuda()
+            batch["chr_cnn"] = batch["chr_cnn"].cuda()
+            batch["chr_lstm"] = batch["chr_lstm"].cuda()
             batch["tok"] = batch["tok"].cuda()
             batch["elmo"] = batch["elmo"].cuda()
 
@@ -153,19 +162,53 @@ class LSTMCRF(nn.Module):
         _, r = batch_perm_idx.sort()
         layer_output = layer_output[r]
 
-        logits = self.projection_layer(layer_output)
+        return layer_output
 
-        return logits
+    def forward_ensemble(self, batch, cuda):
+
+        if cuda:
+            batch["chr_cnn"] = batch["chr_cnn"].cuda()
+            batch["chr_lstm"] = batch["chr_lstm"].cuda()
+            batch["tok"] = batch["tok"].cuda()
+            batch["elmo"] = batch["elmo"].cuda()
+
+        batch_embed = self.embedder(batch, cuda)
+
+        # Sorting batch by size (from
+        batch_len_sort, batch_perm_idx = batch["tok_len"].sort(descending=True)
+        batch_embed = batch_embed[batch_perm_idx]
+
+        layer_output = batch_embed
+        for layer_idx, layer in self.lstm_stack.items():
+            layer_output = layer(batch_embed, layer_output, batch_len_sort)
+
+        # Sorting back the input to the original order
+        _, r = batch_perm_idx.sort()
+        layer_output = layer_output[r]
+
+        return layer_output
 
     def get_loss(self, batch, cuda):
 
-        logits = self.forward(batch=batch, cuda=cuda)
+        layer_output = self.forward(batch=batch, cuda=cuda)
+        logits = self.projection_layer(layer_output)
 
         if cuda:
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
         return -self.crf(logits, batch["labels"], mask=batch["mask"]), "loss/crf"
+
+    def get_loss_ensemble(self, batch, cuda):
+
+        layer_output = self.forward(batch=batch, cuda=cuda)
+        logits = self.projection_layer(layer_output)
+
+        if cuda:
+            batch["labels"] = batch["labels"].cuda()
+            batch["mask"] = batch["mask"].cuda()
+
+        return -self.crf(logits, batch["labels"], mask=batch["mask"]), layer_output
 
     def get_labels(self, batch, cuda):
 
@@ -175,7 +218,8 @@ class LSTMCRF(nn.Module):
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
-        logits = self.forward(batch=batch, cuda=cuda)
+        layer_output = self.forward(batch=batch, cuda=cuda)
+        logits = self.projection_layer(layer_output)
 
         best_paths = self.crf.viterbi_tags(logits, batch["mask"])
 
@@ -209,7 +253,8 @@ class LSTMCRF(nn.Module):
         if cuda:
             batch["mask"] = batch["mask"].cuda()
 
-        logits = self.forward(batch=batch, cuda=cuda)
+        layer_output = self.forward(batch=batch, cuda=cuda)
+        logits = self.projection_layer(layer_output)
         best_paths = self.crf.viterbi_tags(logits, batch["mask"])
         pred = [best_path for best_path, _ in best_paths]
         pred_converted = list()
