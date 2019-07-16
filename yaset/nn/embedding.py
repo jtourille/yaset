@@ -26,7 +26,7 @@ class Embedder(nn.Module):
         self.pretrained_matrix_size = pretrained_matrix_size
         self.mappings = mappings
 
-        self.char_embedding = None
+        self.char_cnn_embedding = None
         self.elmo_embedding = None
         self.bert_embedding = None
         self.pos_embedding = None
@@ -41,16 +41,16 @@ class Embedder(nn.Module):
             if pretrained_matrix is not None:
                 self.pretrained_embedding.weight.data.copy_(torch.from_numpy(pretrained_matrix))
 
-        if self.embeddings_options.get("characters").get("use"):
-            self.char_embedding = nn.Embedding(len(mappings["characters"]),
-                                               self.embeddings_options.get("characters").get("char_embedding_size"))
-            self.char_cnn = CharCNN(char_embedding=self.char_embedding,
-                                    filters=self.embeddings_options.get("characters").get("cnn_filters"))
+        if self.embeddings_options.get("chr_cnn").get("use"):
+            self.char_cnn_embedding = nn.Embedding(len(mappings["characters"]),
+                                                   self.embeddings_options.get("chr_cnn").get("char_embedding_size"))
+            self.char_cnn = CharCNN(char_embedding=self.char_cnn_embedding,
+                                    filters=self.embeddings_options.get("chr_cnn").get("cnn_filters"))
 
-            for kernel_size, num_filters in self.embeddings_options.get("characters").get("cnn_filters"):
+            for kernel_size, num_filters in self.embeddings_options.get("chr_cnn").get("cnn_filters"):
                 self.embedding_size += num_filters
 
-            torch.nn.init.xavier_uniform_(self.char_embedding.weight)
+            torch.nn.init.xavier_uniform_(self.char_cnn_embedding.weight)
 
         if self.embeddings_options.get("elmo").get("use"):
             weight_file = os.path.join(embedding_root_dir, "elmo",
@@ -83,8 +83,8 @@ class Embedder(nn.Module):
 
         to_concat = list()
 
-        if self.char_embedding:
-            char_embed = self.char_embedding(batch["chr"])
+        if self.char_cnn_embedding:
+            char_embed = self.char_cnn_embedding(batch["chr_cnn"])
             cnn_output = self.char_cnn(char_embed)
             to_concat.append(cnn_output)
 
