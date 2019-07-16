@@ -4,6 +4,7 @@ import os
 import shutil
 from typing import Tuple, Dict
 
+import _jsonnet
 import joblib
 import torch
 from torch.utils.data import DataLoader
@@ -12,14 +13,12 @@ from .nn.crf import allowed_transitions
 from .nn.embedding import Embedder
 from .nn.lstmcrf import LSTMCRF
 from .utils.config import replace_auto
+from .utils.copy import copy_embedding_models
 from .utils.data import NERDataset, collate_ner
 from .utils.eval import eval_ner
 from .utils.logging import TrainLogger
 from .utils.mapping import extract_mappings_and_pretrained_matrix
 from .utils.training import Trainer
-from .utils.copy import copy_embedding_models
-
-import _jsonnet
 
 
 def create_dataloader(mappings: Dict = None,
@@ -122,12 +121,12 @@ def train_model(option_file: str = None,
                     ffnn_hidden_layer_use=options.get("network_structure").get("ffnn").get("use"),
                     ffnn_hidden_layer_size=options.get("network_structure").get("ffnn").get("hidden_layer_size"),
                     ffnn_activation_function=options.get("network_structure").get("ffnn").get("activation_function"),
-                    ffnn_input_dropout_rate=options.get("training").get("ffnn_input_dropout_rate"),
+                    ffnn_input_dropout_rate=options.get("network_structure").get("ffnn").get("input_dropout_rate"),
                     input_size=embedder.embedding_size,
-                    input_dropout_rate=options.get("training").get("input_dropout_rate"),
+                    lstm_input_dropout_rate=options.get("network_structure").get("lstm_input_dropout_rate"),
                     lstm_cell_size=options.get("network_structure").get("cell_size"),
                     lstm_hidden_size=options.get("network_structure").get("hidden_size"),
-                    lstm_layer_dropout_rate=options.get("training").get("lstm_layer_dropout_rate"),
+                    lstm_layer_dropout_rate=options.get("network_structure").get("lstm_layer_dropout_rate"),
                     mappings=mappings,
                     nb_layers=options.get("network_structure").get("nb_layers"),
                     num_labels=len(mappings["ner_labels"]),
@@ -162,7 +161,6 @@ def train_model(option_file: str = None,
                       len_dataset_train=len_train,
                       len_dataset_dev=len_dev,
                       log_to_stdout_step=0.05,
-                      mappings=mappings,
                       max_iterations=options.get("training").get("max_iterations"),
                       model=model,
                       optimizer=optimizer,
