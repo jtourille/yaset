@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from .nn.crf import allowed_transitions
 from .nn.embedding import Embedder
-from .nn.lstmcrf import LSTMCRF
+from .nn.lstmcrf import AugmentedLSTMCRF
 from .utils.config import replace_auto
 from .utils.copy import copy_embedding_models
 from .utils.data import NERDataset, collate_ner
@@ -26,10 +26,18 @@ def create_dataloader(mappings: Dict = None,
                       instance_json_file: str = None,
                       test: bool = False) -> Tuple[DataLoader, int]:
 
-    # Building datasets (NER, ATT and REL)
+    singleton_replacement_ratio = 0.0
+
+    if not test:
+        if options.get("embeddings").get("pretrained").get("use"):
+            if options.get("embeddings").get("pretrained").get("unk_training").get("use"):
+                singleton_replacement_ratio = options.get("embeddings").get("pretrained").get(
+                    "unk_training").get("ratio")
+
     ner_dataset = NERDataset(mappings=mappings,
                              instance_json_file=os.path.abspath(instance_json_file),
-                             testing=options.get("testing"))
+                             testing=options.get("testing"),
+                             singleton_replacement_ratio=singleton_replacement_ratio)
 
     logging.info("Dataset size: {}".format(len(ner_dataset)))
 
@@ -40,10 +48,16 @@ def create_dataloader(mappings: Dict = None,
 
     logging.info("Batch size: {}".format(batch_size))
 
+    if not test:
+        drop_last = True
+    else:
+        drop_last = False
+
     ner_dataloader = DataLoader(ner_dataset,
                                 num_workers=options.get("training").get("num_dataloader_workers"),
                                 batch_size=batch_size,
                                 shuffle=True,
+                                drop_last=drop_last,
                                 collate_fn=lambda b: collate_ner(
                                     b,
                                     tok_pad_id=mappings["tokens"].get("<pad>"),
@@ -116,21 +130,22 @@ def train_model(option_file: str = None,
     constraints = allowed_transitions(options.get("data").get("format"),
                                       {v: k for k, v in mappings["ner_labels"].items()})
 
-    model = LSTMCRF(embedder=embedder,
-                    constraints=constraints,
-                    ffnn_hidden_layer_use=options.get("network_structure").get("ffnn").get("use"),
-                    ffnn_hidden_layer_size=options.get("network_structure").get("ffnn").get("hidden_layer_size"),
-                    ffnn_activation_function=options.get("network_structure").get("ffnn").get("activation_function"),
-                    ffnn_input_dropout_rate=options.get("network_structure").get("ffnn").get("input_dropout_rate"),
-                    input_size=embedder.embedding_size,
-                    lstm_input_dropout_rate=options.get("network_structure").get("lstm_input_dropout_rate"),
-                    lstm_cell_size=options.get("network_structure").get("cell_size"),
-                    lstm_hidden_size=options.get("network_structure").get("hidden_size"),
-                    lstm_layer_dropout_rate=options.get("network_structure").get("lstm_layer_dropout_rate"),
-                    mappings=mappings,
-                    nb_layers=options.get("network_structure").get("nb_layers"),
-                    num_labels=len(mappings["ner_labels"]),
-                    skip_connections=options.get("network_structure").get("skip_connections"))
+    model = AugmentedLSTMCRF(
+        embedder=embedder,
+        constraints=constraints,
+        ffnn_hidden_layer_use=options.get("network_structure").get("ffnn").get("use"),
+        ffnn_hidden_layer_size=options.get("network_structure").get("ffnn").get("hidden_layer_size"),
+        ffnn_activation_function=options.get("network_structure").get("ffnn").get("activation_function"),
+        ffnn_input_dropout_rate=options.get("network_structure").get("ffnn").get("input_dropout_rate"),
+        input_size=embedder.embedding_size,
+        lstm_input_dropout_rate=options.get("network_structure").get("lstm_input_dropout_rate"),
+        lstm_hidden_size=options.get("network_structure").get("hidden_size"),
+        lstm_layer_dropout_rate=options.get("network_structure").get("lstm_layer_dropout_rate"),
+        mappings=mappings,
+        nb_layers=options.get("network_structure").get("nb_layers"),
+        num_labels=len(mappings["ner_labels"]),
+        use_highway=options.get("network_structure").get("use_highway")
+    )
 
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=options.get("training").get("lr_rate"))
