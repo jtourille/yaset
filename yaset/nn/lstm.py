@@ -1,45 +1,46 @@
 import torch
 import torch.nn as nn
-from allennlp.modules.lstm_cell_with_projection import LstmCellWithProjection
+from allennlp.modules.augmented_lstm import AugmentedLstm
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 
-class LSTM(nn.Module):
+class LSTMAugmented(nn.Module):
 
     def __init__(self,
                  lstm_hidden_size: int = None,
-                 lstm_cell_size: int = None,
                  input_dropout_rate: float = None,
                  input_size: int = None,
-                 skip_connection: bool = False):
+                 use_highway: bool = False):
         super().__init__()
 
         self.lstm_hidden_size = lstm_hidden_size
-        self.lstm_cell_size = lstm_cell_size
         self.input_dropout_rate = input_dropout_rate
         self.input_size = input_size
-        self.skip_connection = skip_connection
+        self.use_highway = use_highway
 
-        self.lstm_forward = LstmCellWithProjection(self.input_size, self.lstm_hidden_size,
-                                                   self.lstm_cell_size,
-                                                   go_forward=True,
-                                                   recurrent_dropout_probability=self.input_dropout_rate)
+        self.lstm_forward = AugmentedLstm(self.input_size,
+                                          self.lstm_hidden_size,
+                                          go_forward=True,
+                                          recurrent_dropout_probability=self.input_dropout_rate,
+                                          use_highway=self.use_highway,
+                                          use_input_projection_bias=False)
 
-        self.lstm_backward = LstmCellWithProjection(self.input_size, self.lstm_hidden_size,
-                                                    self.lstm_cell_size,
-                                                    go_forward=False,
-                                                    recurrent_dropout_probability=self.input_dropout_rate)
+        self.lstm_backward = AugmentedLstm(self.input_size,
+                                           self.lstm_hidden_size,
+                                           go_forward=False,
+                                           recurrent_dropout_probability=self.input_dropout_rate,
+                                           use_highway=self.use_highway,
+                                           use_input_projection_bias=False)
 
-        self.lstm_forward.reset_parameters()
-        self.lstm_backward.reset_parameters()
+    def forward(self, batch_packed):
 
-    def forward(self, batch_embed, input_layer, batch_len):
+        out_forward, (_, _) = self.lstm_forward(batch_packed)
+        out_backward, (_, _) = self.lstm_backward(batch_packed)
 
-        out_forward, (_, _) = self.lstm_forward(input_layer, batch_len)
-        out_backward, (_, _) = self.lstm_backward(input_layer, batch_len)
+        forward_unpacked, forward_len = pad_packed_sequence(out_forward, batch_first=True)
+        backward_unpacked, backward_len = pad_packed_sequence(out_backward, batch_first=True)
 
-        if self.skip_connection:
-            output = torch.cat((out_forward, out_backward, batch_embed), 2)
-        else:
-            output = torch.cat((out_forward, out_backward), 2)
+        output = torch.cat((forward_unpacked, backward_unpacked), 2)
+        output = pack_padded_sequence(output, forward_len, batch_first=True)
 
         return output
