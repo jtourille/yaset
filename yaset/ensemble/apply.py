@@ -3,7 +3,7 @@ import re
 
 import torch
 
-from yaset.ensemble.load import load_model_ensemble_main
+from yaset.ensemble.load import load_model_ensemble
 from yaset.tools.conll import load_sentences
 from yaset.utils.misc import chunks
 from yaset.utils.training import compute_steps
@@ -19,7 +19,7 @@ def apply_model(model_dir: str = None,
     torch.set_num_threads(nb_cores)
 
     sentences = load_sentences(input_file=input_file)
-    model = load_model_ensemble_main(model_dir=model_dir, cuda=cuda)
+    model = load_model_ensemble(model_dir=model_dir, cuda=cuda)
 
     logging.info("Starting predicting")
     labels = list()
