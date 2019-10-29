@@ -5,10 +5,8 @@ import os
 import shutil
 import sys
 import time
-from datetime import timedelta
 
 from yaset.apply import apply_model
-from yaset.ensemble import train_ensemble
 from yaset.tools.conll import convert_spaces_to_tabulations, convert_labels
 from yaset.train import train_model
 from yaset.utils.path import ensure_dir
@@ -24,7 +22,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
 
-    parser_apply = subparsers.add_parser("APPLY-MODEL",
+    parser_apply = subparsers.add_parser("APPLY",
                                          help="Apply model on a CoNLL file")
     parser_apply.add_argument("--model-dir",
                               help="NER model directory",
@@ -84,35 +82,6 @@ if __name__ == "__main__":
     parser_train.add_argument("--overwrite",
                               help="Overwrite existing output directory",
                               dest="overwrite", action="store_true")
-
-    parser_ensemble = subparsers.add_parser("ENSEMBLE",
-                                            help="Train a NER model ensemble")
-    parser_ensemble.add_argument("--option-file",
-                                 help="Training option file",
-                                 dest="option_file", type=str, required=True)
-    parser_ensemble.add_argument("--output-dir",
-                                 help="Output directory where files will be written",
-                                 dest="output_dir", type=str, required=True)
-
-    parser_ensemble.add_argument("--model-1",
-                                 help="First model of the ensemble",
-                                 dest="model_1", type=str, required=True)
-    parser_ensemble.add_argument("--model-2",
-                                 help="Second model of the ensemble",
-                                 dest="model_2", type=str, required=True)
-    parser_ensemble.add_argument("--model-3",
-                                 help="Third model of the ensemble",
-                                 dest="model_3", type=str)
-    parser_ensemble.add_argument("--model-4",
-                                 help="Fourth model of the ensemble",
-                                 dest="model_4", type=str)
-    parser_ensemble.add_argument("--model-5",
-                                 help="Fifth model of the ensemble",
-                                 dest="model_5", type=str)
-
-    parser_ensemble.add_argument("--overwrite",
-                                 help="Overwrite existing output directory",
-                                 dest="overwrite", action="store_true")
 
     args = parser.parse_args()
 
@@ -194,7 +163,7 @@ if __name__ == "__main__":
                        input_label_type=args.input_label_type,
                        output_label_type=args.output_label_type)
 
-    elif args.subparser_name == "APPLY-MODEL":
+    elif args.subparser_name == "APPLY":
 
         if not os.path.isfile(os.path.abspath(args.input_file)):
             raise FileNotFoundError("The input file does not exist: {}".format(
@@ -217,77 +186,3 @@ if __name__ == "__main__":
                     output_file=os.path.abspath(args.output_file),
                     cuda=args.cuda)
 
-    elif args.subparser_name == "ENSEMBLE":
-
-        if not os.path.isfile(os.path.abspath(args.option_file)):
-            raise FileNotFoundError("The option file does not exist: {}".format(
-                os.path.abspath(args.option_file)
-            ))
-
-        if not os.path.isdir(os.path.abspath(args.model_1)):
-            raise NotADirectoryError("The model directory does not exist: {}".format(args.model_1))
-
-        if not os.path.isdir(os.path.abspath(args.model_2)):
-            raise NotADirectoryError("The model directory does not exist: {}".format(args.model_2))
-
-        if args.model_3 and not os.path.isdir(os.path.abspath(args.model_3)):
-            raise NotADirectoryError("The model directory does not exist: {}".format(args.model_3))
-
-        if args.model_4 and not os.path.isdir(os.path.abspath(args.model_4)):
-            raise NotADirectoryError("The model directory does not exist: {}".format(args.model_4))
-
-        if args.model_5 and not os.path.isdir(os.path.abspath(args.model_5)):
-            raise NotADirectoryError("The model directory does not exist: {}".format(args.model_5))
-
-        if not args.overwrite:
-            if os.path.isdir(os.path.abspath(args.output_dir)):
-                raise FileNotFoundError("The output dir already exists: {}".format(
-                    os.path.abspath(args.output_dir)
-                ))
-
-        if os.path.isdir(os.path.abspath(args.output_dir)):
-            logging.debug("Overwriting output directory")
-            shutil.rmtree(os.path.abspath(args.output_dir))
-
-        ensure_dir(directory=os.path.abspath(args.output_dir))
-
-        log_file = os.path.join(os.path.abspath(args.output_dir), "training.log")
-        log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-        log = logging.getLogger('')
-
-        fh = logging.FileHandler(log_file, encoding="UTF-8")
-        fh.setFormatter(log_format)
-        log.addHandler(fh)
-
-        model_1 = None
-        model_2 = None
-        model_3 = None
-        model_4 = None
-        model_5 = None
-
-        if args.model_1:
-            model_1 = os.path.abspath(args.model_1)
-
-        if args.model_2:
-            model_2 = os.path.abspath(args.model_2)
-
-        if args.model_3:
-            model_3 = os.path.abspath(args.model_3)
-
-        if args.model_4:
-            model_4 = os.path.abspath(args.model_4)
-
-        if args.model_5:
-            model_5 = os.path.abspath(args.model_5)
-
-        train_ensemble(option_file=os.path.abspath(args.option_file),
-                       output_dir=os.path.abspath(args.output_dir),
-                       model_1=model_1,
-                       model_2=model_2,
-                       model_3=model_3,
-                       model_4=model_4,
-                       model_5=model_5)
-
-    end = time.time()
-
-    logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))
