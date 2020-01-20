@@ -6,9 +6,9 @@ import shutil
 import sys
 import time
 
-from yaset.apply import apply_model
+from yaset.inference.apply import apply_model
+from yaset.single.train import train_model
 from yaset.tools.conll import convert_spaces_to_tabulations, convert_labels
-from yaset.train import train_model
 from yaset.utils.path import ensure_dir
 
 if __name__ == "__main__":
