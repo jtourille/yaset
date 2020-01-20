@@ -9,16 +9,16 @@ import joblib
 import torch
 from torch.utils.data import DataLoader
 
-from .nn.crf import allowed_transitions
-from .nn.embedding import Embedder
-from .nn.lstmcrf import AugmentedLSTMCRF
-from .utils.config import replace_auto
-from .utils.copy import copy_embedding_models
-from .utils.data import NERDataset, collate_ner
-from .utils.eval import eval_ner
-from .utils.logging import TrainLogger
-from .utils.mapping import extract_mappings_and_pretrained_matrix
-from .utils.training import Trainer
+from yaset.nn.crf import allowed_transitions
+from yaset.nn.embedding import Embedder
+from yaset.nn.lstmcrf import AugmentedLSTMCRF
+from yaset.utils.config import replace_auto
+from yaset.utils.copy import copy_embedding_models
+from yaset.utils.data import NERDataset, collate_ner
+from yaset.utils.eval import eval_ner
+from yaset.utils.logging import TrainLogger
+from yaset.utils.mapping import extract_mappings_and_pretrained_matrix
+from yaset.utils.training import Trainer
 
 
 def create_dataloader(mappings: Dict = None,
