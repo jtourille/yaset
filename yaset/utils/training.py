@@ -12,6 +12,11 @@ import torch.utils.data
 from .logging import TrainLogger
 from ..utils.path import ensure_dir
 
+try:
+    from apex import amp
+except ImportError:
+    logging.warning("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+
 
 def compute_steps(dataset_len: int = None, step: float = 0.05):
     """
@@ -43,6 +48,7 @@ class Trainer:
     def __init__(self,
                  clip_grad_norm: float = None,
                  cuda: bool = False,
+                 fp16: bool = None,
                  dataloader_train: torch.utils.data.DataLoader = None,
                  dataloader_dev: torch.utils.data.DataLoader = None,
                  eval_function: Callable = None,
@@ -59,6 +65,7 @@ class Trainer:
 
         self.clip_grad_norm = clip_grad_norm
         self.cuda = cuda
+        self.fp16 = fp16
         self.dataloader_train = dataloader_train
         self.dataloader_dev = dataloader_dev
         self.eval_function = eval_function
@@ -106,51 +113,57 @@ class Trainer:
                                        loss_value=loss.item(),
                                        global_step=self.global_step)
 
-            # Backward pass
-            loss.backward()
+            if self.fp16:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
             # Clipping gradient if necessary
-            if self.clip_grad_norm:
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
+            if self.clip_grad_norm is not None:
+                if self.fp16:
+                    nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.clip_grad_norm)
+                else:
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
 
             # Performing optimization step
             self.optimizer.step()
 
             # Logging gradient mean and std
-            for param_name, param in self.model.named_parameters():
-                if param.grad is None:
-                    continue
-
-                values = param.grad.clone().cpu().data.numpy()
-                values = values[~np.isnan(values)]
-
-                self.train_logger.add_scalar(
-                    name="grad_mean/" + param_name,
-                    value=values.mean(),
-                    global_step=self.global_step,
-                )
-                self.train_logger.add_scalar(
-                    name="grad_std/" + param_name,
-                    value=values.std(),
-                    global_step=self.global_step,
-                )
+            # for param_name, param in self.model.named_parameters():
+            #     if param.grad is None:
+            #         continue
+            #
+            #     values = param.grad.clone().cpu().data.numpy()
+            #     values = values[~np.isnan(values)]
+            #
+            #     self.train_logger.add_scalar(
+            #         name="grad_mean/" + param_name,
+            #         value=values.mean(),
+            #         global_step=self.global_step,
+            #     )
+            #     self.train_logger.add_scalar(
+            #         name="grad_std/" + param_name,
+            #         value=values.std(),
+            #         global_step=self.global_step,
+            #     )
 
             if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_train:
-                for param_name, param in self.model.named_parameters():
-
-                    values = param.clone().cpu().data.numpy()
-                    values = values[~np.isnan(values)]
-
-                    self.train_logger.add_scalar(
-                        name="parameter_mean/" + param_name,
-                        value=values.mean(),
-                        global_step=self.global_step,
-                    )
-                    self.train_logger.add_scalar(
-                        name="parameter_std/" + param_name,
-                        value=values.std(),
-                        global_step=self.global_step,
-                    )
+                # for param_name, param in self.model.named_parameters():
+                #
+                #     values = param.clone().cpu().data.numpy()
+                #     values = values[~np.isnan(values)]
+                #
+                #     self.train_logger.add_scalar(
+                #         name="parameter_mean/" + param_name,
+                #         value=values.mean(),
+                #         global_step=self.global_step,
+                #     )
+                #     self.train_logger.add_scalar(
+                #         name="parameter_std/" + param_name,
+                #         value=values.std(),
+                #         global_step=self.global_step,
+                #     )
 
                 checkpoint_name = "{:6.2f}".format((processed_iteration / self.len_dataset_train) * 100)
                 _ = steps.pop(0)
@@ -169,12 +182,12 @@ class Trainer:
 
                 processed_batch_checkpoint = 0
 
-        for name, param in self.model.named_parameters():
-            # Removing NaN values before making a histogram
-            values = param.clone().cpu().data.numpy()
-            values = values[~np.isnan(values)]
-
-            self.train_logger.add_histogram("params/" + name, values, idx_iteration)
+        # for name, param in self.model.named_parameters():
+        #     # Removing NaN values before making a histogram
+        #     values = param.clone().cpu().data.numpy()
+        #     values = values[~np.isnan(values)]
+        #
+        #     self.train_logger.add_histogram("params/" + name, values, idx_iteration)
 
     def test_on_dev(self, idx_iteration: int = None):
 
@@ -192,7 +205,7 @@ class Trainer:
 
                 processed_iteration += batch["size"]
 
-                batch_eval_payload = self.model.get_labels(batch, self.cuda)
+                batch_eval_payload = self.model.get_labels(batch, self.cuda, idx_iteration=idx_iteration)
                 eval_payload.append(batch_eval_payload)
 
                 if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_dev:

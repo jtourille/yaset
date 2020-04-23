@@ -4,13 +4,12 @@ import os
 
 import _jsonnet
 import torch
-
-from .config import replace_auto
-from .logging import TrainLogger
-from ..inference import NERModel
-from ..nn.crf import allowed_transitions
-from ..nn.embedding import Embedder
-from ..nn.lstmcrf import AugmentedLSTMCRF
+from yaset.inference.inference import NERModel
+from yaset.nn.crf import allowed_transitions
+from yaset.nn.embedding import Embedder
+from yaset.nn.lstmcrf import AugmentedLSTMCRF
+from yaset.utils.config import replace_auto
+from yaset.utils.logging import TrainLogger
 
 
 def load_model_single(model_dir: str = None,
@@ -34,14 +33,22 @@ def load_model_single(model_dir: str = None,
 
     model.eval()
 
-    nermodel = NERModel(mappings=mappings,
-                        model=model,
-                        options=options)
+    ner_model = NERModel(mappings=mappings,
+                         model=model,
+                         options=options)
 
-    return nermodel
+    return ner_model
 
 
 def load_model(model_dir: str = None):
+    """
+    Load a single NER model
+    Args:
+        model_dir (str): NER model directory
+
+    Returns:
+        NER model
+    """
     mapping_file = os.path.join(os.path.abspath(model_dir), "mappings.json")
     option_file = os.path.join(os.path.abspath(model_dir), "options.jsonnet")
     logging_file = os.path.join(os.path.abspath(model_dir), "train_log.pkl")

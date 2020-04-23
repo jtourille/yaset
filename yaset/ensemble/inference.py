@@ -1,9 +1,9 @@
 import copy
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
 from allennlp.modules.elmo import batch_to_ids
-from collections import defaultdict
 
 
 class NERModel:
@@ -46,8 +46,8 @@ class NERModel:
 
             }
 
-            for item in sentence:
-                token_form = item[0]
+            for token in sentence:
+                token_form = token
 
                 token_lower = token_form.lower()
                 token_chr_cnn = [model_mapping["characters"].get("<bow>")] + \

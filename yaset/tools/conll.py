@@ -1,6 +1,6 @@
-import re
 import copy
 import os
+import re
 
 
 def convert_spaces_to_tabulations(input_file: str = None,
@@ -44,11 +44,11 @@ def convert_labels(input_file: str = None,
         None
     """
 
-    with open(input_file, "r", encoding="UTF-8") as input_file:
-        with open(output_file, "w", encoding="UTF-8") as output_file:
+    with open(input_file, "r", encoding="UTF-8") as ifile:
+        with open(output_file, "w", encoding="UTF-8") as ofile:
 
             sequence_buffer = list()
-            for line in input_file:
+            for line in ifile:
                 if re.match(r"^$", line):
                     if len(sequence_buffer) > 0:
                         output_labels = convert_sequence(input_sequence=sequence_buffer,
@@ -56,9 +56,9 @@ def convert_labels(input_file: str = None,
                                                          output_label_type=output_label_type)
                         for input_token, label in zip(sequence_buffer, output_labels):
                             final_parts = input_token[:-1] + [label]
-                            output_file.write("{}\n".format("\t".join(final_parts)))
+                            ofile.write("{}\n".format("\t".join(final_parts)))
                             sequence_buffer = list()
-                    output_file.write("\n")
+                    ofile.write("\n")
                     continue
 
                 sequence_buffer.append(line.rstrip("\n").split("\t"))
@@ -69,7 +69,93 @@ def convert_labels(input_file: str = None,
                                                  output_label_type=output_label_type)
                 for input_token, label in zip(sequence_buffer, output_labels):
                     final_parts = input_token[:-1] + [label]
-                    output_file.write("{}\n".format("\t".join(final_parts)))
+                    ofile.write("{}\n".format("\t".join(final_parts)))
+
+    check = check_labels(input_file=output_file, label_type=output_label_type)
+
+
+def check_labels(input_file: str = None,
+                 label_type: str = None):
+
+    if label_type == "BIOUL":
+        return check_bioul_labels(input_file=input_file)
+
+    else:
+        raise Exception("The label type is not supported")
+
+
+def check_bioul_labels(input_file: str = None):
+
+    entities = list()
+
+    with open(os.path.abspath(input_file), "r", encoding="UTF-8") as ifile:
+
+        sentence_buffer = list()
+        sentence_id = 0
+
+        for line in ifile:
+            if re.match("^$", line):
+                if len(sentence_buffer) > 0:
+                    sent_entities = extract_sent_entities(sentence_buffer=sentence_buffer)
+
+                    for entity in sent_entities:
+                        category = set([cat for _, cat in entity])
+                        assert len(list(category)) == 1
+
+                        new_entity = (sentence_id, list(category)[0], [i for i, _ in entity])
+                        entities.append(new_entity)
+
+                    sentence_buffer = list()
+                    sentence_id += 1
+
+                continue
+
+            parts = line.rstrip("\n").split("\t")
+
+            sentence_buffer.append(parts)
+
+        if len(sentence_buffer) > 0:
+            sent_entities = extract_sent_entities(sentence_buffer=sentence_buffer)
+
+            for entity in sent_entities:
+                category = set([cat for _, cat in entity])
+                assert len(list(category)) == 1
+
+                new_entity = (sentence_id, list(category)[0], [i for i, _ in entity])
+                entities.append(new_entity)
+
+    return True
+
+
+def extract_sent_entities(sentence_buffer: list = None):
+
+    labels = [item[-1] for item in sentence_buffer]
+
+    entity_buffer = list()
+    all_entities = list()
+
+    for i, label in enumerate(labels):
+        typ, cat = split_tag(tag=label)
+
+        if typ in ["B", "U", "O"]:
+            if len(entity_buffer) > 0:
+                all_entities.append(entity_buffer)
+                entity_buffer = list()
+
+        if typ in ["B", "U", "L", "I"]:
+            entity_buffer.append((i, cat))
+
+    if len(entity_buffer) > 0:
+        all_entities.append(entity_buffer)
+
+    return all_entities
+
+
+def split_tag(tag: str = None):
+    if tag == "O":
+        return "O", None
+
+    return tag.split("-")
 
 
 def convert_sequence(input_sequence: list = None,
@@ -78,8 +164,8 @@ def convert_sequence(input_sequence: list = None,
 
     input_labels = [token[-1] for token in input_sequence]
 
-    if input_label_type == "CONLL2003":
-        entities = extract_entities_conll2003(input_labels=input_labels)
+    if input_label_type == "IOB1":
+        entities = extract_entities_iob1(input_labels=input_labels)
     else:
         raise Exception
 
@@ -143,7 +229,7 @@ def load_sentences(input_file: str = None):
     return all_sentences
 
 
-def extract_entities_conll2003(input_labels: list = None):
+def extract_entities_iob1(input_labels: list = None):
     """
     Extract entity offsets for a CoNLL file encoded in conll 2003
 
@@ -155,13 +241,10 @@ def extract_entities_conll2003(input_labels: list = None):
     """
 
     sequence_entities = list()
-
     entity_buffer = list()
+    tag_before, cat_before = None, None
+
     for i, label in enumerate(input_labels):
-        if i > 0:
-            tag_before, cat_before = extract_tag_cat(label)
-        else:
-            tag_before, cat_before = None, None
 
         if label == "O":
             if len(entity_buffer) > 0:
@@ -199,6 +282,9 @@ def extract_entities_conll2003(input_labels: list = None):
                         sequence_entities.append(entity_buffer)
                         entity_buffer = list()
                     entity_buffer.append(i)
+
+        tag_before = copy.deepcopy(tag)
+        cat_before = copy.deepcopy(cat)
 
     if len(entity_buffer) > 0:
         sequence_entities.append(entity_buffer)

@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.tokenization_bert import BertTokenizer
-
 from yaset.nn.cnn import CharCNN
 from yaset.utils.misc import flatten
 
@@ -28,6 +27,7 @@ class Embedder(nn.Module):
         self.mappings = mappings
 
         self.char_cnn_embedding = None
+        self.char_cnn_type = None
         self.elmo_embedding = None
         self.bert_embedding = None
         self.pos_embedding = None
@@ -44,7 +44,23 @@ class Embedder(nn.Module):
 
         if self.embeddings_options.get("chr_cnn").get("use"):
             logging.debug("Initializing char_cnn module")
-            self.char_cnn_embedding = nn.Embedding(len(mappings["characters"]),
+
+            if self.embeddings_options.get("chr_cnn").get("type") == "type1":
+                embed_len = len(mappings["characters_type1"])
+                self.char_cnn_type = "type1"
+
+            elif self.embeddings_options.get("chr_cnn").get("type") == "type2":
+                embed_len = 259
+                self.char_cnn_type = "type2"
+
+            else:
+                logging.info(self.embeddings_options)
+                raise Exception("Unrecognized character type: {}".format(
+                    self.embeddings_options.get("chr_cnn").get("type")
+
+                ))
+
+            self.char_cnn_embedding = nn.Embedding(embed_len,
                                                    self.embeddings_options.get("chr_cnn").get("char_embedding_size"))
             self.char_cnn = CharCNN(char_embedding=self.char_cnn_embedding,
                                     filters=self.embeddings_options.get("chr_cnn").get("cnn_filters"))
@@ -90,7 +106,11 @@ class Embedder(nn.Module):
         to_concat = list()
 
         if self.char_cnn_embedding:
-            char_embed = self.char_cnn_embedding(batch["chr_cnn"])
+            if self.char_cnn_type == "type1":
+                char_embed = self.char_cnn_embedding(batch["chr_cnn_type1"])
+            else:
+                char_embed = self.char_cnn_embedding(batch["chr_cnn_type2"])
+
             cnn_output = self.char_cnn(char_embed)
             to_concat.append(cnn_output)
 

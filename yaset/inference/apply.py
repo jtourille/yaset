@@ -1,9 +1,9 @@
 import logging
 import re
 
-from .tools.conll import load_sentences
-from .utils.load import load_model_single
-from .utils.training import compute_steps
+from yaset.tools.conll import load_sentences
+from yaset.utils.load import load_model_single
+from yaset.utils.training import compute_steps
 
 
 def chunks(l, n):

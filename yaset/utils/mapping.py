@@ -1,11 +1,11 @@
+import logging
 import os
 import re
 
 import numpy as np
+from gensim.models import KeyedVectors
 from gensim.models.word2vec import Word2Vec
 from gensim.scripts.glove2word2vec import glove2word2vec
-from gensim.models import KeyedVectors
-import logging
 
 
 def extract_ner_labels(instance_file: str = None):
@@ -98,6 +98,11 @@ def extract_mappings_and_pretrained_matrix(options: dict = None,
     char_list.append("<eow>")
     char_list.append("<pad>")
 
-    all_mappings["characters"] = {k: i for i, k in enumerate(char_list)}
+    all_mappings["characters_type1"] = {k: i for i, k in enumerate(char_list)}
+    all_mappings["characters_type2"] = {
+        "<bow>": 256,
+        "<eow>": 257,
+        "<pad>": 258
+    }
 
     return all_mappings, pretrained_matrix
