@@ -68,7 +68,7 @@ local data_dir = "/path/to/data";
     },
     "chr_cnn": {
       "use": true,
-      "type": "type2",
+      "type": "literal", // ["literal", "utf8"]
       "char_embedding_size": 25,
       "cnn_filters": [
         [3, 32],

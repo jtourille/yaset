@@ -12,10 +12,12 @@ setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     ],
-    scripts=['bin/yaset', 'bin/yaset-hyperopt', 'bin/yaset-ensemble'],
+    scripts=['bin/yaset', 'bin/yaset-ensemble'],
     install_requires=['torch',
                       'allennlp',
                       "joblib",
                       "jsonnet",
-                      "transformers"]
+                      "transformers",
+                      "gensim",
+                      "pymongo"]
 )

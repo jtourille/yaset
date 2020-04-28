@@ -98,8 +98,8 @@ def extract_mappings_and_pretrained_matrix(options: dict = None,
     char_list.append("<eow>")
     char_list.append("<pad>")
 
-    all_mappings["characters_type1"] = {k: i for i, k in enumerate(char_list)}
-    all_mappings["characters_type2"] = {
+    all_mappings["characters_literal"] = {k: i for i, k in enumerate(char_list)}
+    all_mappings["characters_utf8"] = {
         "<bow>": 256,
         "<eow>": 257,
         "<pad>": 258

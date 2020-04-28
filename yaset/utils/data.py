@@ -282,6 +282,7 @@ class NERDataset(Dataset):
                     continue
 
                 token = line.rstrip("\n").split("\t")[0]
+                token = token.lower()
                 count[token] += 1
 
         singletons = list()
@@ -298,11 +299,11 @@ class NERDataset(Dataset):
             "tok": list(),
             "str": list(),
 
-            "chr_cnn_type1": list(),
-            "chr_lstm_type1": list(),
+            "chr_cnn_literal": list(),
+            "chr_cnn_utf8": list(),
 
-            "chr_cnn_type2": list(),
-            "chr_lstm_type2": list(),
+            # "chr_lstm_type1": list(),
+            # "chr_lstm_type2": list(),
 
             "lbl": list(),
         }
@@ -314,19 +315,20 @@ class NERDataset(Dataset):
             token_lower = token_form.lower()
             token_encoded = token_form.encode("UTF-8")
 
-            token_chr_cnn_type1 = [self.mappings["characters_type1"].get("<bow>")] + \
-                                  [self.mappings["characters_type1"].get(char) for char in token_form
-                                   if self.mappings["characters_type1"].get(char)] + \
-                                  [self.mappings["characters_type1"].get("<eow>")]
-            token_chr_lstm_type1 = [self.mappings["characters_type1"].get(char) for char in token_form
-                                    if self.mappings["characters_type1"].get(char)]
+            token_chr_cnn_literal = [self.mappings["characters_literal"].get("<bow>")] + \
+                                    [self.mappings["characters_literal"].get(char) for char in token_form
+                                     if self.mappings["characters_literal"].get(char)] + \
+                                    [self.mappings["characters_literal"].get("<eow>")]
 
-            token_chr_cnn_type2 = [self.mappings["characters_type1"].get("<bow>")] + \
-                                  [char for char in token_encoded] + \
-                                  [self.mappings["characters_type1"].get("<eow>")]
-            token_chr_lstm_type2 = [char for char in token_encoded]
+            # token_chr_lstm_type1 = [self.mappings["characters_type1"].get(char) for char in token_form
+            #                         if self.mappings["characters_type1"].get(char)]
 
-            if token_form in self.singletons:
+            token_chr_cnn_utf8 = [self.mappings["characters_utf8"].get("<bow>")] + \
+                                 [char for char in token_encoded] + \
+                                 [self.mappings["characters_utf8"].get("<eow>")]
+            # token_chr_lstm_type2 = [char for char in token_encoded]
+
+            if token_lower in self.singletons:
                 if random.random() < self.singleton_replacement_ratio:
                     new_instance["tok"].append(
                         self.mappings["tokens"].get("<unk>")
@@ -342,11 +344,11 @@ class NERDataset(Dataset):
 
             new_instance["str"].append(token_form)
 
-            new_instance["chr_cnn_type1"].append(token_chr_cnn_type1)
-            new_instance["chr_lstm_type1"].append(token_chr_lstm_type1)
+            new_instance["chr_cnn_literal"].append(token_chr_cnn_literal)
+            # new_instance["chr_lstm_type1"].append(token_chr_lstm_type1)
 
-            new_instance["chr_cnn_type2"].append(token_chr_cnn_type2)
-            new_instance["chr_lstm_type2"].append(token_chr_lstm_type2)
+            new_instance["chr_cnn_utf8"].append(token_chr_cnn_utf8)
+            # new_instance["chr_lstm_type2"].append(token_chr_lstm_type2)
 
             new_instance["lbl"].append(self.mappings["ner_labels"].get(token_label))
 
@@ -378,58 +380,59 @@ class NERDataset(Dataset):
 
 def collate_ner(batch,
                 tok_pad_id: int = None,
-                chr_pad_id_type1: int = None,
-                chr_pad_id_type2: int = None,
+                chr_pad_id_literal: int = None,
+                chr_pad_id_utf8: int = None,
                 options: dict = None):
 
-    len_chr_lstm_type1 = list()
-    len_char_cnn_type1 = list()
+    len_char_cnn_literal = list()
+    len_char_cnn_utf8 = list()
 
-    len_chr_lstm_type2 = list()
-    len_char_cnn_type2 = list()
+    # len_chr_lstm_type1 = list()
+    # len_chr_lstm_type2 = list()
 
     len_tok = list()
 
     for instance in batch:
-        for item in instance["chr_lstm_type1"]:
-            len_chr_lstm_type1.append(len(item))
+        for item in instance["chr_cnn_literal"]:
+            len_char_cnn_literal.append(len(item))
 
-        for item in instance["chr_cnn_type1"]:
-            len_char_cnn_type1.append(len(item))
+        for item in instance["chr_cnn_utf8"]:
+            len_char_cnn_utf8.append(len(item))
 
-        for item in instance["chr_lstm_type2"]:
-            len_chr_lstm_type2.append(len(item))
+        # for item in instance["chr_lstm_type1"]:
+        #     len_chr_lstm_type1.append(len(item))
 
-        for item in instance["chr_cnn_type2"]:
-            len_char_cnn_type2.append(len(item))
+        # for item in instance["chr_lstm_type2"]:
+        #     len_chr_lstm_type2.append(len(item))
 
-        len_tok.append(len(instance["chr_lstm_type1"]))
+        len_tok.append(len(instance["chr_cnn_literal"]))
 
-    max_len_chr_lstm_type1 = max(len_chr_lstm_type1)
-    max_len_chr_cnn_type1 = max(len_char_cnn_type1)
+    max_len_chr_cnn_literal = max(len_char_cnn_literal)
+    max_len_chr_cnn_utf8 = max(len_char_cnn_utf8)
 
-    max_len_chr_lstm_type2 = max(len_chr_lstm_type2)
-    max_len_chr_cnn_type2 = max(len_char_cnn_type2)
+    # max_len_chr_lstm_type1 = max(len_chr_lstm_type1)
+    # max_len_chr_lstm_type2 = max(len_chr_lstm_type2)
 
     max_len_tok = max(len_tok)
 
     if options.get("embeddings").get("chr_cnn").get("use"):
         max_kernel_size = max([k for k, f in options.get("embeddings").get("chr_cnn").get("cnn_filters")])
 
-        if max_kernel_size > max_len_chr_cnn_type1:
-            max_len_chr_cnn_type1 = max_kernel_size
+        if max_kernel_size > max_len_chr_cnn_literal:
+            max_len_chr_cnn_literal = max_kernel_size
 
-        if max_kernel_size > max_len_chr_cnn_type2:
-            max_len_chr_cnn_type2 = max_kernel_size
+        if max_kernel_size > max_len_chr_cnn_utf8:
+            max_len_chr_cnn_utf8 = max_kernel_size
 
     final_batch = {
-        "chr_cnn_type1": list(),
-        "chr_lstm_type1": list(),
-        "chr_len_type1": list(),
+        "chr_cnn_literal": list(),
+        "chr_cnn_utf8": list(),
 
-        "chr_cnn_type2": list(),
-        "chr_lstm_type2": list(),
-        "chr_len_type2": list(),
+        # "chr_lstm_type1": list(),
+        # "chr_len_literal": list(),
+
+        # "chr_lstm_type2": list(),
+        # "chr_len_utf8": list(),
 
         "tok": list(),
         "tok_len": list(),
@@ -446,83 +449,85 @@ def collate_ner(batch,
         # CHARS
         # =====
 
-        chr_list_cnn_type1 = list()
-        chr_list_lstm_type1 = list()
-        chr_list_len_type1 = list()
+        chr_list_cnn_literal = list()
+        # chr_list_lstm_type1 = list()
+        # chr_list_len_type1 = list()
 
-        chr_list_cnn_type2 = list()
-        chr_list_lstm_type2 = list()
-        chr_list_len_type2 = list()
+        chr_list_cnn_utf8 = list()
+        # chr_list_lstm_type2 = list()
+        # chr_list_len_type2 = list()
 
         mask = list()
 
         # TYPE1
         # ===========================================================
-        for token_chars in instance["chr_lstm_type1"]:
+        # for token_chars in instance["chr_lstm_type1"]:
+        #     cur_chars = copy.deepcopy(token_chars)
+        #     chr_list_len_type1.append(len(cur_chars))
+        #
+        #     while len(cur_chars) < max_len_chr_lstm_type1:
+        #         cur_chars.append(chr_pad_id_type1)
+        #
+        #     chr_list_lstm_type1.append(cur_chars)
+        #
+        #
+
+        for token_chars in instance["chr_cnn_literal"]:
             cur_chars = copy.deepcopy(token_chars)
-            chr_list_len_type1.append(len(cur_chars))
 
-            while len(cur_chars) < max_len_chr_lstm_type1:
-                cur_chars.append(chr_pad_id_type1)
+            while len(cur_chars) < max_len_chr_cnn_literal:
+                cur_chars.append(chr_pad_id_literal)
 
-            chr_list_lstm_type1.append(cur_chars)
+            chr_list_cnn_literal.append(cur_chars)
 
             mask.append(1)
 
-        for token_chars in instance["chr_cnn_type1"]:
-            cur_chars = copy.deepcopy(token_chars)
+        while len(chr_list_cnn_literal) < max_len_tok:
+            cur_chars = [chr_pad_id_literal for _ in range(max_len_chr_cnn_literal)]
+            chr_list_cnn_literal.append(cur_chars)
 
-            while len(cur_chars) < max_len_chr_cnn_type1:
-                cur_chars.append(chr_pad_id_type1)
-
-            chr_list_cnn_type1.append(cur_chars)
-
-        while len(chr_list_cnn_type1) < max_len_tok:
-            cur_chars = [chr_pad_id_type1 for _ in range(max_len_chr_cnn_type1)]
-            chr_list_cnn_type1.append(cur_chars)
-
-            cur_chars = [chr_pad_id_type1 for _ in range(max_len_chr_lstm_type1)]
-            chr_list_lstm_type1.append(cur_chars)
-
-            chr_list_len_type1.append(0)
+            # cur_chars = [chr_pad_id_literal for _ in range(max_len_chr_lstm_type1)]
+            # chr_list_lstm_type1.append(cur_chars)
+            #
+            # chr_list_len_type1.append(0)
 
             mask.append(0)
 
         # TYPE2
         # ===========================================================
-        for token_chars in instance["chr_lstm_type2"]:
+        # for token_chars in instance["chr_lstm_type2"]:
+        #     cur_chars = copy.deepcopy(token_chars)
+        #     chr_list_len_type2.append(len(cur_chars))
+        #
+        #     while len(cur_chars) < max_len_chr_lstm_type2:
+        #         cur_chars.append(chr_pad_id_utf8)
+        #
+        #     chr_list_lstm_type2.append(cur_chars)
+
+        for token_chars in instance["chr_cnn_utf8"]:
             cur_chars = copy.deepcopy(token_chars)
-            chr_list_len_type2.append(len(cur_chars))
 
-            while len(cur_chars) < max_len_chr_lstm_type2:
-                cur_chars.append(chr_pad_id_type2)
+            while len(cur_chars) < max_len_chr_cnn_utf8:
+                cur_chars.append(chr_pad_id_utf8)
 
-            chr_list_lstm_type2.append(cur_chars)
+            chr_list_cnn_utf8.append(cur_chars)
 
-        for token_chars in instance["chr_cnn_type2"]:
-            cur_chars = copy.deepcopy(token_chars)
+        while len(chr_list_cnn_utf8) < max_len_tok:
+            cur_chars = [chr_pad_id_utf8 for _ in range(max_len_chr_cnn_utf8)]
+            chr_list_cnn_utf8.append(cur_chars)
 
-            while len(cur_chars) < max_len_chr_cnn_type2:
-                cur_chars.append(chr_pad_id_type2)
+            # cur_chars = [chr_pad_id_utf8 for _ in range(max_len_chr_lstm_type2)]
+            # chr_list_lstm_type2.append(cur_chars)
+            #
+            # chr_list_len_type2.append(0)
 
-            chr_list_cnn_type2.append(cur_chars)
+        final_batch["chr_cnn_literal"].append(chr_list_cnn_literal)
+        # final_batch["chr_lstm_type1"].append(chr_list_lstm_type1)
+        # final_batch["chr_len_type1"].append(chr_list_len_type1)
 
-        while len(chr_list_cnn_type2) < max_len_tok:
-            cur_chars = [chr_pad_id_type2 for _ in range(max_len_chr_cnn_type2)]
-            chr_list_cnn_type2.append(cur_chars)
-
-            cur_chars = [chr_pad_id_type2 for _ in range(max_len_chr_lstm_type2)]
-            chr_list_lstm_type2.append(cur_chars)
-
-            chr_list_len_type2.append(0)
-
-        final_batch["chr_cnn_type1"].append(chr_list_cnn_type1)
-        final_batch["chr_lstm_type1"].append(chr_list_lstm_type1)
-        final_batch["chr_len_type1"].append(chr_list_len_type1)
-
-        final_batch["chr_cnn_type2"].append(chr_list_cnn_type2)
-        final_batch["chr_lstm_type2"].append(chr_list_lstm_type2)
-        final_batch["chr_len_type2"].append(chr_list_len_type2)
+        final_batch["chr_cnn_utf8"].append(chr_list_cnn_utf8)
+        # final_batch["chr_lstm_type2"].append(chr_list_lstm_type2)
+        # final_batch["chr_len_type2"].append(chr_list_len_type2)
 
         # STRINGS
         # =======
@@ -532,7 +537,7 @@ def collate_ner(batch,
         # TOKENS
         # ======
 
-        final_batch["tok_len"].append(len(instance["chr_lstm_type1"]))
+        final_batch["tok_len"].append(len(instance["chr_cnn_literal"]))
 
         if options.get("embeddings").get("pretrained").get("use"):
             cur_tokens = copy.deepcopy(instance["tok"])
@@ -555,13 +560,13 @@ def collate_ner(batch,
 
     final_batch["elmo"] = batch_to_ids(final_batch["str"])
 
-    final_batch["chr_lstm_type1"] = torch.LongTensor(final_batch["chr_lstm_type1"])
-    final_batch["chr_cnn_type1"] = torch.LongTensor(final_batch["chr_cnn_type1"])
-    final_batch["chr_len_type1"] = torch.LongTensor(final_batch["chr_len_type1"])
+    # final_batch["chr_lstm_type1"] = torch.LongTensor(final_batch["chr_lstm_type1"])
+    final_batch["chr_cnn_literal"] = torch.LongTensor(final_batch["chr_cnn_literal"])
+    # final_batch["chr_len_type1"] = torch.LongTensor(final_batch["chr_len_type1"])
 
-    final_batch["chr_lstm_type2"] = torch.LongTensor(final_batch["chr_lstm_type2"])
-    final_batch["chr_cnn_type2"] = torch.LongTensor(final_batch["chr_cnn_type2"])
-    final_batch["chr_len_type2"] = torch.LongTensor(final_batch["chr_len_type2"])
+    # final_batch["chr_lstm_type2"] = torch.LongTensor(final_batch["chr_lstm_type2"])
+    final_batch["chr_cnn_utf8"] = torch.LongTensor(final_batch["chr_cnn_utf8"])
+    # final_batch["chr_len_type2"] = torch.LongTensor(final_batch["chr_len_type2"])
 
     final_batch["tok"] = torch.LongTensor(final_batch["tok"])
     final_batch["tok_len"] = torch.LongTensor(final_batch["tok_len"])
@@ -569,6 +574,6 @@ def collate_ner(batch,
     final_batch["labels"] = torch.LongTensor(final_batch["labels"])
     final_batch["mask"] = torch.LongTensor(final_batch["mask"])
 
-    final_batch["size"] = final_batch["chr_lstm_type1"].size(0)
+    final_batch["size"] = final_batch["chr_cnn_literal"].size(0)
 
     return final_batch

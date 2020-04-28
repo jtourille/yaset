@@ -340,10 +340,10 @@ class AugmentedLSTMCRF(nn.Module):
         batch = kwargs["batch"]
 
         if cuda:
-            batch["chr_cnn_type1"] = batch["chr_cnn_type1"].cuda()
-            batch["chr_cnn_type2"] = batch["chr_cnn_type2"].cuda()
-            batch["chr_lstm_type1"] = batch["chr_lstm_type1"].cuda()
-            batch["chr_lstm_type2"] = batch["chr_lstm_type2"].cuda()
+            batch["chr_cnn_literal"] = batch["chr_cnn_literal"].cuda()
+            batch["chr_cnn_utf8"] = batch["chr_cnn_utf8"].cuda()
+            # batch["chr_lstm_type1"] = batch["chr_lstm_type1"].cuda()
+            # batch["chr_lstm_type2"] = batch["chr_lstm_type2"].cuda()
             batch["tok"] = batch["tok"].cuda()
             batch["elmo"] = batch["elmo"].cuda()
 

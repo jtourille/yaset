@@ -9,6 +9,7 @@ import joblib
 import torch
 from torch.utils.data import DataLoader
 from transformers import AdamW
+
 from yaset.nn.crf import allowed_transitions
 from yaset.nn.embedding import Embedder
 from yaset.nn.lstmcrf import AugmentedLSTMCRF
@@ -59,8 +60,8 @@ def create_dataloader(mappings: Dict = None,
                                 collate_fn=lambda b: collate_ner(
                                     b,
                                     tok_pad_id=mappings["tokens"].get("<pad>"),
-                                    chr_pad_id_type1=mappings["characters_type1"].get("<pad>"),
-                                    chr_pad_id_type2=mappings["characters_type2"].get("<pad>"),
+                                    chr_pad_id_literal=mappings["characters_literal"].get("<pad>"),
+                                    chr_pad_id_utf8=mappings["characters_utf8"].get("<pad>"),
                                     options=options))
 
     return ner_dataloader, len(ner_dataset)

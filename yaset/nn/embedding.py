@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.tokenization_bert import BertTokenizer
+
 from yaset.nn.cnn import CharCNN
 from yaset.utils.misc import flatten
 
@@ -45,13 +46,13 @@ class Embedder(nn.Module):
         if self.embeddings_options.get("chr_cnn").get("use"):
             logging.debug("Initializing char_cnn module")
 
-            if self.embeddings_options.get("chr_cnn").get("type") == "type1":
-                embed_len = len(mappings["characters_type1"])
-                self.char_cnn_type = "type1"
+            if self.embeddings_options.get("chr_cnn").get("type") == "literal":
+                embed_len = len(mappings["characters_literal"])
+                self.char_cnn_type = "literal"
 
-            elif self.embeddings_options.get("chr_cnn").get("type") == "type2":
+            elif self.embeddings_options.get("chr_cnn").get("type") == "utf8":
                 embed_len = 259
-                self.char_cnn_type = "type2"
+                self.char_cnn_type = "utf8"
 
             else:
                 logging.info(self.embeddings_options)
@@ -106,10 +107,10 @@ class Embedder(nn.Module):
         to_concat = list()
 
         if self.char_cnn_embedding:
-            if self.char_cnn_type == "type1":
-                char_embed = self.char_cnn_embedding(batch["chr_cnn_type1"])
+            if self.char_cnn_type == "literal":
+                char_embed = self.char_cnn_embedding(batch["chr_cnn_literal"])
             else:
-                char_embed = self.char_cnn_embedding(batch["chr_cnn_type2"])
+                char_embed = self.char_cnn_embedding(batch["chr_cnn_utf8"])
 
             cnn_output = self.char_cnn(char_embed)
             to_concat.append(cnn_output)
