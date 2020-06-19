@@ -1,9 +1,9 @@
 import logging
 import re
 
-from .tools.conll import load_sentences
-from .utils.load import load_model
-from .utils.training import compute_steps
+from yaset.tools.conll import load_sentences
+from yaset.utils.load import load_model_single
+from yaset.utils.training import compute_steps
 
 
 def chunks(l, n):
@@ -18,7 +18,7 @@ def apply_model(model_dir: str = None,
                 cuda: bool = False):
 
     sentences = load_sentences(input_file=input_file)
-    model = load_model(model_dir=model_dir, cuda=cuda)
+    model = load_model_single(model_dir=model_dir, cuda=cuda)
 
     logging.info("Starting predicting")
     labels = list()

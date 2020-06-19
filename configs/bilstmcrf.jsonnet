@@ -12,35 +12,44 @@ local data_dir = "/path/to/data";
         "train_file": data_dir + "/train.conll",
         "dev_file": data_dir + "/dev.conll",
 
-        // Label format: you can choose between BIO, IOB1, BIOUL, BMES
+        // Label format: you can choose between IOB1, IOB2, IOBES
         // Please ensure the consistency of your dataset as no check will be performed (for now)
-        "format": "BIOUL"
+        "format": "IOBES"
     },
     "network_structure": {
-        "nb_layers": 2, // Number of LSTM layers
-        "hidden_size": 512, // LSTM hidden size
-        "cell_size": 1024, // LSTM cell size
-        "skip_connections": true, // Do you want to use skip connections?
+        "input_dropout_rate": 0.2,
+
+        "lstm": {
+            "nb_layers": 2, // Number of LSTM layers
+            "hidden_size": 512, // LSTM hidden size
+            "layer_dropout_rate": 0.5,
+            "highway": true, // Do you want to use highway connections?
+        },
+
         "ffnn": {
             "use": true, // Do you want to use a feed forward neural network before projection and classification?
             "hidden_layer_size": "auto", // FFNN hidden size
-            "activation_function": "relu" // You can choose between relu and tanh
+            "activation_function": "relu", // You can choose between relu and tanh
+            "input_dropout_rate": 0.2
         }
     },
     "training": {
-        "input_dropout_rate": 0.5,
-        "lstm_layer_dropout_rate": 0.2,
-        "ffnn_input_dropout_rate": 0.2,
-        "optimizer": "adam",
+        "optimizer": "adam", # ["adam", "adamw"]
+        "weight_decay": 0.0,
         "lr_rate": 0.001,
+        "fp16": false,
+        "fp16_level": "O1",
+
         "max_iterations": 100,
         "patience": 10,
         "cuda": true,
-        "train_batch_size": 32,
+        "train_batch_size": 32, # Mini-batch that will be sent to the GPU
+        "accumulation_steps": 1,
         "clip_grad_norm": 5.0,
         "test_batch_size": 32,
         "num_global_workers": 12,
         "num_dataloader_workers": 4,
+
         "lr_scheduler": {
             "use": true,
             "mode": "max",
@@ -54,12 +63,13 @@ local data_dir = "/path/to/data";
   "embeddings": {
     "pretrained": {
       "use": true,
-      "format": "glove", // gensim or glove
-      "model_path": data_dir + "/glove/glove.6B.300d.txt"
+      "format": "w2v", // gensim or glove
+      "model_path": data_dir + "/glove/glove.6B/glove.6B.300d.txt",
+      "singleton_replacement_ratio": 0.2
     },
-    "characters": {
+    "chr_cnn": {
       "use": true,
-      "type": "cnn",
+      "type": "literal", // ["literal", "utf8"]
       "char_embedding_size": 25,
       "cnn_filters": [
         [3, 32],
@@ -70,16 +80,18 @@ local data_dir = "/path/to/data";
     },
     "elmo": {
       "use": false,
+      "fine_tune": false,
       "weight_path": data_dir + "/elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
       "options_path": data_dir + "/elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
     },
     "bert":{
-        "use": true,
+        "use": false,
         "fine_tune": false,
         "type": "pytorch",
-        "do_lower_case": false,
-        "model_file": data_dir + "/bert/pytorch/bert-base-cased.tar.gz",
-        "vocab_file": data_dir + "/bert/pytorch/bert-base-cased-vocab.txt",
+        "do_lower_case": true,
+        "model_file": data_dir + "/bert/pytorch/bert-base-uncased-pytorch_model.bin",
+        "vocab_file": data_dir + "/bert/pytorch/bert-base-uncased-vocab.txt",
+        "config_file": data_dir + "/bert/pytorch/bert-base-uncased-config.json",
         "only_final_layer": false
     }
   }

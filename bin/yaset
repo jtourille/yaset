@@ -5,11 +5,10 @@ import os
 import shutil
 import sys
 import time
-from datetime import timedelta
 
-from yaset.apply import apply_model
+from yaset.inference.apply import apply_model
+from yaset.single.train import train_model
 from yaset.tools.conll import convert_spaces_to_tabulations, convert_labels
-from yaset.train import train_model
 from yaset.utils.path import ensure_dir
 
 if __name__ == "__main__":
@@ -23,7 +22,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="Sub-commands", description="Valid sub-commands",
                                        help="Valid sub-commands", dest="subparser_name")
 
-    parser_apply = subparsers.add_parser("APPLY-MODEL",
+    parser_apply = subparsers.add_parser("APPLY",
                                          help="Apply model on a CoNLL file")
     parser_apply.add_argument("--model-dir",
                               help="NER model directory",
@@ -164,7 +163,7 @@ if __name__ == "__main__":
                        input_label_type=args.input_label_type,
                        output_label_type=args.output_label_type)
 
-    elif args.subparser_name == "APPLY-MODEL":
+    elif args.subparser_name == "APPLY":
 
         if not os.path.isfile(os.path.abspath(args.input_file)):
             raise FileNotFoundError("The input file does not exist: {}".format(
@@ -187,6 +186,3 @@ if __name__ == "__main__":
                     output_file=os.path.abspath(args.output_file),
                     cuda=args.cuda)
 
-    end = time.time()
-
-    logging.info("Done ! (Time elapsed: {})".format(timedelta(seconds=round(end - start))))

@@ -12,6 +12,11 @@ import torch.utils.data
 from .logging import TrainLogger
 from ..utils.path import ensure_dir
 
+try:
+    from apex import amp
+except ImportError:
+    logging.warning("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+
 
 def compute_steps(dataset_len: int = None, step: float = 0.05):
     """
@@ -41,8 +46,10 @@ def compute_steps(dataset_len: int = None, step: float = 0.05):
 class Trainer:
 
     def __init__(self,
+                 accumulation_steps: int = None,
                  clip_grad_norm: float = None,
                  cuda: bool = False,
+                 fp16: bool = None,
                  dataloader_train: torch.utils.data.DataLoader = None,
                  dataloader_dev: torch.utils.data.DataLoader = None,
                  eval_function: Callable = None,
@@ -57,8 +64,10 @@ class Trainer:
                  train_logger: TrainLogger = None,
                  working_dir: str = None):
 
+        self.accumulation_steps = accumulation_steps
         self.clip_grad_norm = clip_grad_norm
         self.cuda = cuda
+        self.fp16 = fp16
         self.dataloader_train = dataloader_train
         self.dataloader_dev = dataloader_dev
         self.eval_function = eval_function
@@ -83,12 +92,13 @@ class Trainer:
         processed_iteration = 0
         processed_batch_checkpoint = 0
 
-        steps = compute_steps(self.len_dataset_train, step=self.log_to_stdout_step)
+        logging_steps = compute_steps(self.len_dataset_train, step=self.log_to_stdout_step)
+        # todo: check if there is something to print
+
+        # Reinitializing optimizer
+        self.optimizer.zero_grad()
 
         for batch_idx, batch in enumerate(self.dataloader_train):
-            # Reinitializing optimizer
-            self.optimizer.zero_grad()
-
             # Incrementing counters
             processed_iteration += batch["size"]
             self.global_step += batch["size"]
@@ -96,6 +106,13 @@ class Trainer:
 
             # Forward pass
             loss, loss_name = self.model.get_loss(batch, cuda=self.cuda)
+            loss = loss / self.accumulation_steps
+
+            if self.fp16:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
             # Logging loss
             self.train_logger.add_scalar(name=loss_name,
@@ -106,54 +123,56 @@ class Trainer:
                                        loss_value=loss.item(),
                                        global_step=self.global_step)
 
-            # Backward pass
-            loss.backward()
+            if (batch_idx + 1) % self.accumulation_steps == 0:
+                # Clipping gradient if necessary
+                if self.clip_grad_norm is not None:
+                    if self.fp16:
+                        nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.clip_grad_norm)
+                    else:
+                        nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
 
-            # Clipping gradient if necessary
-            if self.clip_grad_norm:
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
-
-            # Performing optimization step
-            self.optimizer.step()
+                # Performing optimization step
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
             # Logging gradient mean and std
-            for param_name, param in self.model.named_parameters():
-                if param.grad is None:
-                    continue
+            # for param_name, param in self.model.named_parameters():
+            #     if param.grad is None:
+            #         continue
+            #
+            #     values = param.grad.clone().cpu().data.numpy()
+            #     values = values[~np.isnan(values)]
+            #
+            #     self.train_logger.add_scalar(
+            #         name="grad_mean/" + param_name,
+            #         value=values.mean(),
+            #         global_step=self.global_step,
+            #     )
+            #     self.train_logger.add_scalar(
+            #         name="grad_std/" + param_name,
+            #         value=values.std(),
+            #         global_step=self.global_step,
+            #     )
 
-                values = param.grad.clone().cpu().data.numpy()
-                values = values[~np.isnan(values)]
-
-                self.train_logger.add_scalar(
-                    name="grad_mean/" + param_name,
-                    value=values.mean(),
-                    global_step=self.global_step,
-                )
-                self.train_logger.add_scalar(
-                    name="grad_std/" + param_name,
-                    value=values.std(),
-                    global_step=self.global_step,
-                )
-
-            if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_train:
-                for param_name, param in self.model.named_parameters():
-
-                    values = param.clone().cpu().data.numpy()
-                    values = values[~np.isnan(values)]
-
-                    self.train_logger.add_scalar(
-                        name="parameter_mean/" + param_name,
-                        value=values.mean(),
-                        global_step=self.global_step,
-                    )
-                    self.train_logger.add_scalar(
-                        name="parameter_std/" + param_name,
-                        value=values.std(),
-                        global_step=self.global_step,
-                    )
+            if processed_iteration >= logging_steps[0] or processed_iteration == self.len_dataset_train:
+                # for param_name, param in self.model.named_parameters():
+                #
+                #     values = param.clone().cpu().data.numpy()
+                #     values = values[~np.isnan(values)]
+                #
+                #     self.train_logger.add_scalar(
+                #         name="parameter_mean/" + param_name,
+                #         value=values.mean(),
+                #         global_step=self.global_step,
+                #     )
+                #     self.train_logger.add_scalar(
+                #         name="parameter_std/" + param_name,
+                #         value=values.std(),
+                #         global_step=self.global_step,
+                #     )
 
                 checkpoint_name = "{:6.2f}".format((processed_iteration / self.len_dataset_train) * 100)
-                _ = steps.pop(0)
+                _ = logging_steps.pop(0)
                 checkpoint_payload = {
                     "processed": processed_iteration
                 }
@@ -169,12 +188,12 @@ class Trainer:
 
                 processed_batch_checkpoint = 0
 
-        for name, param in self.model.named_parameters():
-            # Removing NaN values before making a histogram
-            values = param.clone().cpu().data.numpy()
-            values = values[~np.isnan(values)]
-
-            self.train_logger.add_histogram("params/" + name, values, idx_iteration)
+        # for name, param in self.model.named_parameters():
+        #     # Removing NaN values before making a histogram
+        #     values = param.clone().cpu().data.numpy()
+        #     values = values[~np.isnan(values)]
+        #
+        #     self.train_logger.add_histogram("params/" + name, values, idx_iteration)
 
     def test_on_dev(self, idx_iteration: int = None):
 
@@ -192,7 +211,7 @@ class Trainer:
 
                 processed_iteration += batch["size"]
 
-                batch_eval_payload = self.model.get_labels(batch, self.cuda)
+                batch_eval_payload = self.model.get_labels(batch, self.cuda, idx_iteration=idx_iteration)
                 eval_payload.append(batch_eval_payload)
 
                 if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_dev:

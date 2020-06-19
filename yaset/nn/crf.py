@@ -1,10 +1,10 @@
 """
 Conditional random field
 """
+import logging
 from typing import List, Tuple, Dict, Optional
 
 import torch
-import logging
 
 
 def allowed_transitions(constraint_type: str, labels: Dict[int, str]) -> List[Tuple[int, int]]:
@@ -105,6 +105,21 @@ def is_transition_allowed(constraint_type: str,
                 # I-x can only transition to I-x or L-x
                 from_tag in ('B', 'I') and to_tag in ('I', 'L') and from_entity == to_entity
         ])
+    elif constraint_type == "IOBES":
+        if from_tag == "START":
+            return to_tag in ('O', 'B', 'S')
+        if to_tag == "END":
+            return from_tag in ('O', 'E', 'S')
+        return any([
+                # O can transition to O, B-* or S-*
+                # L-x can transition to O, B-*, or S-*
+                # U-x can transition to O, B-*, or S-*
+                from_tag in ('O', 'E', 'S') and to_tag in ('O', 'B', 'S'),
+                # B-x can only transition to I-x or E-x
+                # I-x can only transition to I-x or E-x
+                from_tag in ('B', 'I') and to_tag in ('I', 'E') and from_entity == to_entity
+        ])
+
     elif constraint_type == "BIO":
         if from_tag == "START":
             return to_tag in ('O', 'B')

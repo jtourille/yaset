@@ -21,16 +21,21 @@ def copy_embedding_models(embeddings_options: dict = None,
 
     if embeddings_options.get("bert").get("use"):
         target_subdir = os.path.join(os.path.abspath(output_dir), "bert")
+        target_vocab_subdir = os.path.join(os.path.abspath(target_subdir), "vocab")
+
         ensure_dir(target_subdir)
+        ensure_dir(target_vocab_subdir)
 
         if embeddings_options.get("bert").get("type") == "pytorch":
             target_model_file = os.path.join(target_subdir,
                                              os.path.basename(embeddings_options.get("bert").get("model_file")))
-            target_model_vocab = os.path.join(target_subdir,
-                                              os.path.basename(embeddings_options.get("bert").get("vocab_file")))
+            target_model_vocab = os.path.join(target_vocab_subdir, "vocab.txt")
+            target_model_config_file = os.path.join(target_subdir,
+                                                    os.path.basename(embeddings_options.get("bert").get("config_file")))
 
             shutil.copy(embeddings_options.get("bert").get("model_file"), target_model_file)
             shutil.copy(embeddings_options.get("bert").get("vocab_file"), target_model_vocab)
+            shutil.copy(embeddings_options.get("bert").get("config_file"), target_model_config_file)
         else:
             target_model_dir = os.path.join(target_subdir,
                                             os.path.basename(embeddings_options.get("bert").get("model_file")))
