@@ -10,7 +10,6 @@ from transformers.modeling_bert import BertModel, BertConfig
 from transformers.tokenization_bert import BertTokenizer
 
 from yaset.nn.cnn import CharCNN
-from yaset.utils.misc import flatten
 
 
 class Embedder(nn.Module):
@@ -124,7 +123,7 @@ class Embedder(nn.Module):
             to_concat.append(elmo_embed["elmo_representations"][0])
 
         if self.bert_embedding:
-            bert_embed = self.bert_embedding(batch["str"], cuda)
+            bert_embed = self.bert_embedding(batch, cuda)
             to_concat.append(bert_embed)
 
         final_output = torch.cat(to_concat, 2)
@@ -172,15 +171,15 @@ class BertEmbeddings(nn.Module):
 
         self.hidden_size = self.model.config.hidden_size
 
-    def forward(self, sequence_list, cuda):
+    def forward(self, batch, cuda):
 
         if self.fine_tune:
-            selected_encoders_layers = self.compute_embeddings(sequence_list, cuda)
+            selected_encoders_layers = self.compute_embeddings(batch, cuda)
 
         else:
             with torch.no_grad():
                 self.model.eval()
-                selected_encoders_layers = self.compute_embeddings(sequence_list, cuda)
+                selected_encoders_layers = self.compute_embeddings(batch, cuda)
 
         if self.only_final_layer:
             return selected_encoders_layers[-1]
@@ -196,47 +195,13 @@ class BertEmbeddings(nn.Module):
 
             return scaled_weighted_sum
 
-    def compute_embeddings(self, sequence_list, cuda):
+    def compute_embeddings(self, batch, cuda):
 
-        all_token_pieces = list()
-        all_token_start = list()
-
-        for sequence in sequence_list:
-
-            seq_token_pieces = list(map(self.tokenizer.tokenize, sequence))
-            seq_token_lens = list(map(len, seq_token_pieces))
-            seq_token_pieces = ["[CLS]"] + list(flatten(seq_token_pieces)) + ["[SEP]"]
-            seq_token_start = 1 + np.cumsum([0] + seq_token_lens[:-1])
-
-            all_token_pieces.append(seq_token_pieces)
-            all_token_start.append(seq_token_start)
-
-        max_seq_len_pieces = max([len(seq) for seq in all_token_pieces])
-        max_seq_len_str = max([len(seq) for seq in sequence_list])
-
-        tensor_all_input_ids = list()
-        tensor_all_input_type_ids = list()
-        tensor_all_input_mask = list()
-        tensor_all_indices = list()
-
-        for seq_token_pieces, seq_indices in zip(all_token_pieces, all_token_start):
-            input_ids = self.tokenizer.convert_tokens_to_ids(seq_token_pieces)
-            input_type_ids = [0] * len(input_ids)
-            input_mask = [1] * len(input_ids)
-
-            while len(input_ids) < max_seq_len_pieces:
-                input_ids.append(0)
-                input_type_ids.append(0)
-                input_mask.append(0)
-
-            tensor_all_input_ids.append(torch.LongTensor([input_ids]))
-            tensor_all_input_type_ids.append(torch.LongTensor([input_type_ids]))
-            tensor_all_input_mask.append(torch.LongTensor([input_mask]))
-            tensor_all_indices.append(torch.LongTensor(seq_indices))
-
-        tensor_all_input_ids = torch.cat(tensor_all_input_ids, 0)
-        tensor_all_input_type_ids = torch.cat(tensor_all_input_type_ids, 0)
-        tensor_all_input_mask = torch.cat(tensor_all_input_mask, 0)
+        tensor_all_input_ids = batch["bert_all_input_ids"]
+        tensor_all_input_type_ids = batch["bert_all_input_type_ids"]
+        tensor_all_input_mask = batch["bert_all_input_mask"]
+        tensor_all_indices = batch["bert_all_indices"]
+        max_seq_len_str = batch["bert_max_seq_len_str"]
 
         if cuda:
             tensor_all_input_ids = tensor_all_input_ids.cuda()

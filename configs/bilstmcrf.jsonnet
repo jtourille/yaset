@@ -43,7 +43,8 @@ local data_dir = "/path/to/data";
         "max_iterations": 100,
         "patience": 10,
         "cuda": true,
-        "train_batch_size": 32,
+        "train_batch_size": 32, # Mini-batch that will be sent to the GPU
+        "accumulation_steps": 1,
         "clip_grad_norm": 5.0,
         "test_batch_size": 32,
         "num_global_workers": 12,

@@ -7,6 +7,9 @@ from collections import defaultdict
 import torch
 from allennlp.modules.elmo import batch_to_ids
 from torch.utils.data import Dataset
+from transformers.tokenization_bert import BertTokenizer
+from yaset.utils.misc import flatten
+import numpy as np
 
 
 class NERDatasetEnsemble(Dataset):
@@ -248,17 +251,26 @@ class NERDataset(Dataset):
                  mappings: dict = None,
                  instance_json_file: str = None,
                  testing: bool = None,
-                 singleton_replacement_ratio: float = 0.0):
+                 singleton_replacement_ratio: float = 0.0,
+                 bert_use: bool = False,
+                 bert_voc_dir: str = None,
+                 bert_lowercase: bool = False):
 
         self.mappings = mappings
         self.instance_json_file = instance_json_file
         self.testing = testing
         self.singleton_replacement_ratio = singleton_replacement_ratio
 
+        self.bert_use = bert_use
+        self.bert_voc_dir = bert_voc_dir
+        self.bert_lowercase = bert_lowercase
+        self.bert_tokenizer = None
+
+        if self.bert_use:
+            self.bert_tokenizer = BertTokenizer.from_pretrained(self.bert_voc_dir, do_lower_case=self.bert_lowercase)
+
         self.singletons = set(self.extract_singletons())
-
         self.instances = dict()
-
         self.load_instances()
 
     def __len__(self):
@@ -302,9 +314,6 @@ class NERDataset(Dataset):
             "chr_cnn_literal": list(),
             "chr_cnn_utf8": list(),
 
-            # "chr_lstm_type1": list(),
-            # "chr_lstm_type2": list(),
-
             "lbl": list(),
         }
 
@@ -320,13 +329,9 @@ class NERDataset(Dataset):
                                      if self.mappings["characters_literal"].get(char)] + \
                                     [self.mappings["characters_literal"].get("<eow>")]
 
-            # token_chr_lstm_type1 = [self.mappings["characters_type1"].get(char) for char in token_form
-            #                         if self.mappings["characters_type1"].get(char)]
-
             token_chr_cnn_utf8 = [self.mappings["characters_utf8"].get("<bow>")] + \
                                  [char for char in token_encoded] + \
                                  [self.mappings["characters_utf8"].get("<eow>")]
-            # token_chr_lstm_type2 = [char for char in token_encoded]
 
             if token_lower in self.singletons:
                 if random.random() < self.singleton_replacement_ratio:
@@ -345,12 +350,20 @@ class NERDataset(Dataset):
             new_instance["str"].append(token_form)
 
             new_instance["chr_cnn_literal"].append(token_chr_cnn_literal)
-            # new_instance["chr_lstm_type1"].append(token_chr_lstm_type1)
-
             new_instance["chr_cnn_utf8"].append(token_chr_cnn_utf8)
-            # new_instance["chr_lstm_type2"].append(token_chr_lstm_type2)
 
             new_instance["lbl"].append(self.mappings["ner_labels"].get(token_label))
+
+        if self.bert_use:
+            # BERT
+            seq_token_pieces = list(map(self.bert_tokenizer.tokenize, new_instance["str"]))
+            seq_token_lens = list(map(len, seq_token_pieces))
+            seq_token_pieces = ["[CLS]"] + list(flatten(seq_token_pieces)) + ["[SEP]"]
+            seq_token_start = 1 + np.cumsum([0] + seq_token_lens[:-1])
+            seq_input_ids = self.bert_tokenizer.convert_tokens_to_ids(seq_token_pieces)
+
+            new_instance["bert_input_ids"] = seq_input_ids
+            new_instance["bert_seq_token_start"] = seq_token_start
 
         return new_instance
 
@@ -382,13 +395,11 @@ def collate_ner(batch,
                 tok_pad_id: int = None,
                 chr_pad_id_literal: int = None,
                 chr_pad_id_utf8: int = None,
+                bert_use: bool = False,
                 options: dict = None):
 
     len_char_cnn_literal = list()
     len_char_cnn_utf8 = list()
-
-    # len_chr_lstm_type1 = list()
-    # len_chr_lstm_type2 = list()
 
     len_tok = list()
 
@@ -399,19 +410,10 @@ def collate_ner(batch,
         for item in instance["chr_cnn_utf8"]:
             len_char_cnn_utf8.append(len(item))
 
-        # for item in instance["chr_lstm_type1"]:
-        #     len_chr_lstm_type1.append(len(item))
-
-        # for item in instance["chr_lstm_type2"]:
-        #     len_chr_lstm_type2.append(len(item))
-
         len_tok.append(len(instance["chr_cnn_literal"]))
 
     max_len_chr_cnn_literal = max(len_char_cnn_literal)
     max_len_chr_cnn_utf8 = max(len_char_cnn_utf8)
-
-    # max_len_chr_lstm_type1 = max(len_chr_lstm_type1)
-    # max_len_chr_lstm_type2 = max(len_chr_lstm_type2)
 
     max_len_tok = max(len_tok)
 
@@ -428,12 +430,6 @@ def collate_ner(batch,
         "chr_cnn_literal": list(),
         "chr_cnn_utf8": list(),
 
-        # "chr_lstm_type1": list(),
-        # "chr_len_literal": list(),
-
-        # "chr_lstm_type2": list(),
-        # "chr_len_utf8": list(),
-
         "tok": list(),
         "tok_len": list(),
 
@@ -442,35 +438,18 @@ def collate_ner(batch,
         "elmo": None,
 
         "labels": list(),
-        "mask": list(),
+        "mask": list()
     }
 
+    all_token_start = list()
+    all_input_ids = list()
+
     for instance in batch:
-        # CHARS
-        # =====
-
-        chr_list_cnn_literal = list()
-        # chr_list_lstm_type1 = list()
-        # chr_list_len_type1 = list()
-
-        chr_list_cnn_utf8 = list()
-        # chr_list_lstm_type2 = list()
-        # chr_list_len_type2 = list()
-
         mask = list()
 
-        # TYPE1
+        # CHAR LITERAL
         # ===========================================================
-        # for token_chars in instance["chr_lstm_type1"]:
-        #     cur_chars = copy.deepcopy(token_chars)
-        #     chr_list_len_type1.append(len(cur_chars))
-        #
-        #     while len(cur_chars) < max_len_chr_lstm_type1:
-        #         cur_chars.append(chr_pad_id_type1)
-        #
-        #     chr_list_lstm_type1.append(cur_chars)
-        #
-        #
+        chr_list_cnn_literal = list()
 
         for token_chars in instance["chr_cnn_literal"]:
             cur_chars = copy.deepcopy(token_chars)
@@ -486,23 +465,11 @@ def collate_ner(batch,
             cur_chars = [chr_pad_id_literal for _ in range(max_len_chr_cnn_literal)]
             chr_list_cnn_literal.append(cur_chars)
 
-            # cur_chars = [chr_pad_id_literal for _ in range(max_len_chr_lstm_type1)]
-            # chr_list_lstm_type1.append(cur_chars)
-            #
-            # chr_list_len_type1.append(0)
-
             mask.append(0)
 
-        # TYPE2
+        # CHAR UTF-8
         # ===========================================================
-        # for token_chars in instance["chr_lstm_type2"]:
-        #     cur_chars = copy.deepcopy(token_chars)
-        #     chr_list_len_type2.append(len(cur_chars))
-        #
-        #     while len(cur_chars) < max_len_chr_lstm_type2:
-        #         cur_chars.append(chr_pad_id_utf8)
-        #
-        #     chr_list_lstm_type2.append(cur_chars)
+        chr_list_cnn_utf8 = list()
 
         for token_chars in instance["chr_cnn_utf8"]:
             cur_chars = copy.deepcopy(token_chars)
@@ -516,27 +483,15 @@ def collate_ner(batch,
             cur_chars = [chr_pad_id_utf8 for _ in range(max_len_chr_cnn_utf8)]
             chr_list_cnn_utf8.append(cur_chars)
 
-            # cur_chars = [chr_pad_id_utf8 for _ in range(max_len_chr_lstm_type2)]
-            # chr_list_lstm_type2.append(cur_chars)
-            #
-            # chr_list_len_type2.append(0)
-
         final_batch["chr_cnn_literal"].append(chr_list_cnn_literal)
-        # final_batch["chr_lstm_type1"].append(chr_list_lstm_type1)
-        # final_batch["chr_len_type1"].append(chr_list_len_type1)
-
         final_batch["chr_cnn_utf8"].append(chr_list_cnn_utf8)
-        # final_batch["chr_lstm_type2"].append(chr_list_lstm_type2)
-        # final_batch["chr_len_type2"].append(chr_list_len_type2)
 
         # STRINGS
         # =======
-
         final_batch["str"].append(instance["str"])
 
         # TOKENS
         # ======
-
         final_batch["tok_len"].append(len(instance["chr_cnn_literal"]))
 
         if options.get("embeddings").get("pretrained").get("use"):
@@ -549,7 +504,6 @@ def collate_ner(batch,
 
         # LABELS
         # ======
-
         cur_labels = copy.deepcopy(instance["lbl"])
 
         while len(cur_labels) < max_len_tok:
@@ -558,15 +512,51 @@ def collate_ner(batch,
         final_batch["labels"].append(cur_labels)
         final_batch["mask"].append(mask)
 
+        if bert_use:
+            # BERT
+            # ====
+            all_token_start.append(instance["bert_seq_token_start"])
+            all_input_ids.append(instance["bert_input_ids"])
+
+    if bert_use:
+        # BERT BATCHING
+        # =============
+        max_seq_len_pieces = max([len(seq) for seq in all_input_ids])
+        max_seq_len_str = max([len(seq) for seq in final_batch["str"]])
+
+        tensor_all_input_ids = list()
+        tensor_all_input_type_ids = list()
+        tensor_all_input_mask = list()
+        tensor_all_indices = list()
+
+        for input_ids, seq_indices in zip(all_input_ids, all_token_start):
+            input_type_ids = [0] * len(input_ids)
+            input_mask = [1] * len(input_ids)
+
+            while len(input_ids) < max_seq_len_pieces:
+                input_ids.append(0)
+                input_type_ids.append(0)
+                input_mask.append(0)
+
+            tensor_all_input_ids.append(torch.LongTensor([input_ids]))
+            tensor_all_input_type_ids.append(torch.LongTensor([input_type_ids]))
+            tensor_all_input_mask.append(torch.LongTensor([input_mask]))
+            tensor_all_indices.append(torch.LongTensor(seq_indices))
+
+        tensor_all_input_ids = torch.cat(tensor_all_input_ids, 0)
+        tensor_all_input_type_ids = torch.cat(tensor_all_input_type_ids, 0)
+        tensor_all_input_mask = torch.cat(tensor_all_input_mask, 0)
+
+        final_batch["bert_all_input_ids"] = tensor_all_input_ids
+        final_batch["bert_all_input_type_ids"] = tensor_all_input_type_ids
+        final_batch["bert_all_input_mask"] = tensor_all_input_mask
+        final_batch["bert_all_indices"] = tensor_all_indices
+        final_batch["bert_max_seq_len_str"] = max_seq_len_str
+
     final_batch["elmo"] = batch_to_ids(final_batch["str"])
 
-    # final_batch["chr_lstm_type1"] = torch.LongTensor(final_batch["chr_lstm_type1"])
     final_batch["chr_cnn_literal"] = torch.LongTensor(final_batch["chr_cnn_literal"])
-    # final_batch["chr_len_type1"] = torch.LongTensor(final_batch["chr_len_type1"])
-
-    # final_batch["chr_lstm_type2"] = torch.LongTensor(final_batch["chr_lstm_type2"])
     final_batch["chr_cnn_utf8"] = torch.LongTensor(final_batch["chr_cnn_utf8"])
-    # final_batch["chr_len_type2"] = torch.LongTensor(final_batch["chr_len_type2"])
 
     final_batch["tok"] = torch.LongTensor(final_batch["tok"])
     final_batch["tok_len"] = torch.LongTensor(final_batch["tok_len"])

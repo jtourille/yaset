@@ -25,7 +25,8 @@ from yaset.utils.training import Trainer
 def create_dataloader(mappings: Dict = None,
                       options: Dict = None,
                       instance_json_file: str = None,
-                      test: bool = False) -> Tuple[DataLoader, int]:
+                      test: bool = False,
+                      working_dir: str = None) -> Tuple[DataLoader, int]:
 
     singleton_replacement_ratio = 0.0
 
@@ -33,10 +34,17 @@ def create_dataloader(mappings: Dict = None,
         if options.get("embeddings").get("pretrained").get("use"):
             singleton_replacement_ratio = options.get("embeddings").get("pretrained").get("singleton_replacement_ratio")
 
+    bert_use = options.get("embeddings").get("bert").get("use")
+    bert_voc_dir = os.path.join(working_dir, "bert", "vocab")
+    bert_lowercase = options.get("embeddings").get("bert").get("do_lower_case")
+
     ner_dataset = NERDataset(mappings=mappings,
                              instance_json_file=os.path.abspath(instance_json_file),
                              testing=options.get("testing"),
-                             singleton_replacement_ratio=singleton_replacement_ratio)
+                             singleton_replacement_ratio=singleton_replacement_ratio,
+                             bert_use=bert_use,
+                             bert_voc_dir=bert_voc_dir,
+                             bert_lowercase=bert_lowercase)
 
     logging.info("Dataset size: {}".format(len(ner_dataset)))
 
@@ -62,6 +70,7 @@ def create_dataloader(mappings: Dict = None,
                                     tok_pad_id=mappings["tokens"].get("<pad>"),
                                     chr_pad_id_literal=mappings["characters_literal"].get("<pad>"),
                                     chr_pad_id_utf8=mappings["characters_utf8"].get("<pad>"),
+                                    bert_use=bert_use,
                                     options=options))
 
     return ner_dataloader, len(ner_dataset)
@@ -113,12 +122,14 @@ def train_model(option_file: str = None,
     dataloader_train, len_train = create_dataloader(mappings=mappings,
                                                     options=options,
                                                     instance_json_file=options.get("data").get("train_file"),
-                                                    test=False)
+                                                    test=False,
+                                                    working_dir=output_dir)
 
     dataloader_dev, len_dev = create_dataloader(mappings=mappings,
                                                 options=options,
                                                 instance_json_file=options.get("data").get("dev_file"),
-                                                test=True)
+                                                test=True,
+                                                working_dir=output_dir)
 
     logging.info("Building model")
     embedder = Embedder(embeddings_options=options.get("embeddings"),
@@ -197,7 +208,8 @@ def train_model(option_file: str = None,
         logging.info("Using fp16: {}".format(options.get("training").get("fp16_level")))
         model, optimizer = amp.initialize(model, optimizer, opt_level=options.get("training").get("fp16_level"))
 
-    trainer = Trainer(clip_grad_norm=options.get("training").get("clip_grad_norm"),
+    trainer = Trainer(accumulation_steps=options.get("training").get("accumulation_steps"),
+                      clip_grad_norm=options.get("training").get("clip_grad_norm"),
                       cuda=options.get("training").get("cuda"),
                       fp16=options.get("training").get("fp16"),
                       dataloader_train=dataloader_train,

@@ -46,6 +46,7 @@ def compute_steps(dataset_len: int = None, step: float = 0.05):
 class Trainer:
 
     def __init__(self,
+                 accumulation_steps: int = None,
                  clip_grad_norm: float = None,
                  cuda: bool = False,
                  fp16: bool = None,
@@ -63,6 +64,7 @@ class Trainer:
                  train_logger: TrainLogger = None,
                  working_dir: str = None):
 
+        self.accumulation_steps = accumulation_steps
         self.clip_grad_norm = clip_grad_norm
         self.cuda = cuda
         self.fp16 = fp16
@@ -90,12 +92,13 @@ class Trainer:
         processed_iteration = 0
         processed_batch_checkpoint = 0
 
-        steps = compute_steps(self.len_dataset_train, step=self.log_to_stdout_step)
+        logging_steps = compute_steps(self.len_dataset_train, step=self.log_to_stdout_step)
+        # todo: check if there is something to print
+
+        # Reinitializing optimizer
+        self.optimizer.zero_grad()
 
         for batch_idx, batch in enumerate(self.dataloader_train):
-            # Reinitializing optimizer
-            self.optimizer.zero_grad()
-
             # Incrementing counters
             processed_iteration += batch["size"]
             self.global_step += batch["size"]
@@ -103,6 +106,13 @@ class Trainer:
 
             # Forward pass
             loss, loss_name = self.model.get_loss(batch, cuda=self.cuda)
+            loss = loss / self.accumulation_steps
+
+            if self.fp16:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
             # Logging loss
             self.train_logger.add_scalar(name=loss_name,
@@ -113,21 +123,17 @@ class Trainer:
                                        loss_value=loss.item(),
                                        global_step=self.global_step)
 
-            if self.fp16:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
+            if (batch_idx + 1) % self.accumulation_steps == 0:
+                # Clipping gradient if necessary
+                if self.clip_grad_norm is not None:
+                    if self.fp16:
+                        nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.clip_grad_norm)
+                    else:
+                        nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
 
-            # Clipping gradient if necessary
-            if self.clip_grad_norm is not None:
-                if self.fp16:
-                    nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.clip_grad_norm)
-                else:
-                    nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm, norm_type=2)
-
-            # Performing optimization step
-            self.optimizer.step()
+                # Performing optimization step
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
             # Logging gradient mean and std
             # for param_name, param in self.model.named_parameters():
@@ -148,7 +154,7 @@ class Trainer:
             #         global_step=self.global_step,
             #     )
 
-            if processed_iteration >= steps[0] or processed_iteration == self.len_dataset_train:
+            if processed_iteration >= logging_steps[0] or processed_iteration == self.len_dataset_train:
                 # for param_name, param in self.model.named_parameters():
                 #
                 #     values = param.clone().cpu().data.numpy()
@@ -166,7 +172,7 @@ class Trainer:
                 #     )
 
                 checkpoint_name = "{:6.2f}".format((processed_iteration / self.len_dataset_train) * 100)
-                _ = steps.pop(0)
+                _ = logging_steps.pop(0)
                 checkpoint_payload = {
                     "processed": processed_iteration
                 }
