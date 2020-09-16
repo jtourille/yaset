@@ -227,22 +227,23 @@ from yaset.nn.lstm import LSTMAugmented
 
 
 class AugmentedLSTMCRF(nn.Module):
-
-    def __init__(self,
-                 constraints: list = None,
-                 embedder: Embedder = None,
-                 ffnn_hidden_layer_use: bool = None,
-                 ffnn_hidden_layer_size: int = None,
-                 ffnn_activation_function: str = None,
-                 ffnn_input_dropout_rate: float = None,
-                 input_size: int = None,
-                 lstm_hidden_size: int = None,
-                 lstm_input_dropout_rate: float = None,
-                 lstm_layer_dropout_rate: int = None,
-                 mappings: dict = None,
-                 nb_layers: int = None,
-                 num_labels: int = None,
-                 use_highway: bool = False):
+    def __init__(
+        self,
+        constraints: list = None,
+        embedder: Embedder = None,
+        ffnn_hidden_layer_use: bool = None,
+        ffnn_hidden_layer_size: int = None,
+        ffnn_activation_function: str = None,
+        ffnn_input_dropout_rate: float = None,
+        input_size: int = None,
+        lstm_hidden_size: int = None,
+        lstm_input_dropout_rate: float = None,
+        lstm_layer_dropout_rate: int = None,
+        mappings: dict = None,
+        nb_layers: int = None,
+        num_labels: int = None,
+        use_highway: bool = False,
+    ):
         super().__init__()
 
         self.constraints = constraints
@@ -268,7 +269,9 @@ class AugmentedLSTMCRF(nn.Module):
         else:
             self.ensemble_output_size = self.lstm_hidden_size * 2
 
-        self.crf: nn.Module = ConditionalRandomField(num_tags=self.num_labels, constraints=constraints)
+        self.crf: nn.Module = ConditionalRandomField(
+            num_tags=self.num_labels, constraints=constraints
+        )
 
     def create_final_layer(self):
 
@@ -284,7 +287,11 @@ class AugmentedLSTMCRF(nn.Module):
                 current_ffnn_hidden_layer_size = self.ffnn_hidden_layer_size
 
             module_list = list()
-            module_list.append(nn.Linear(current_input_projection, current_ffnn_hidden_layer_size))
+            module_list.append(
+                nn.Linear(
+                    current_input_projection, current_ffnn_hidden_layer_size
+                )
+            )
 
             if self.ffnn_activation_function == "relu":
                 module_list.append(nn.ReLU())
@@ -293,10 +300,16 @@ class AugmentedLSTMCRF(nn.Module):
                 module_list.append(nn.Tanh())
 
             else:
-                raise Exception("The activation function is not supported: {}".format(self.ffnn_activation_function))
+                raise Exception(
+                    "The activation function is not supported: {}".format(
+                        self.ffnn_activation_function
+                    )
+                )
 
             module_list.append(nn.Dropout(p=self.ffnn_input_dropout_rate))
-            module_list.append(nn.Linear(current_ffnn_hidden_layer_size, self.num_labels))
+            module_list.append(
+                nn.Linear(current_ffnn_hidden_layer_size, self.num_labels)
+            )
 
             projection_layer = nn.Sequential(*module_list)
 
@@ -319,17 +332,21 @@ class AugmentedLSTMCRF(nn.Module):
         if self.nb_layers > 0:
             layer_idx = 0
 
-            layers[str(layer_idx)] = LSTMAugmented(lstm_hidden_size=self.lstm_hidden_size,
-                                                   input_dropout_rate=self.lstm_input_dropout_rate,
-                                                   input_size=self.input_size,
-                                                   use_highway=self.use_highway)
+            layers[str(layer_idx)] = LSTMAugmented(
+                lstm_hidden_size=self.lstm_hidden_size,
+                input_dropout_rate=self.lstm_input_dropout_rate,
+                input_size=self.input_size,
+                use_highway=self.use_highway,
+            )
             layer_idx += 1
 
             while layer_idx < self.nb_layers:
-                layers[str(layer_idx)] = LSTMAugmented(lstm_hidden_size=self.lstm_hidden_size,
-                                                       input_dropout_rate=self.lstm_layer_dropout_rate,
-                                                       input_size=self.lstm_hidden_size * 2,
-                                                       use_highway=self.use_highway)
+                layers[str(layer_idx)] = LSTMAugmented(
+                    lstm_hidden_size=self.lstm_hidden_size,
+                    input_dropout_rate=self.lstm_layer_dropout_rate,
+                    input_size=self.lstm_hidden_size * 2,
+                    use_highway=self.use_highway,
+                )
                 layer_idx += 1
 
         return layers
@@ -352,7 +369,9 @@ class AugmentedLSTMCRF(nn.Module):
         # Sorting batch by size (from
         batch_len_sort, batch_perm_idx = batch["tok_len"].sort(descending=True)
         batch_embed = batch_embed[batch_perm_idx]
-        batch_packed = pack_padded_sequence(batch_embed, batch_len_sort, batch_first=True)
+        batch_packed = pack_padded_sequence(
+            batch_embed, batch_len_sort, batch_first=True
+        )
 
         layer_output = batch_packed
         for layer_idx, layer in self.lstm_stack.items():
@@ -409,7 +428,9 @@ class AugmentedLSTMCRF(nn.Module):
         # Sorting batch by size (from
         batch_len_sort, batch_perm_idx = batch["tok_len"].sort(descending=True)
         batch_embed = batch_embed[batch_perm_idx]
-        batch_packed = pack_padded_sequence(batch_embed, batch_len_sort, batch_first=True)
+        batch_packed = pack_padded_sequence(
+            batch_embed, batch_len_sort, batch_first=True
+        )
 
         layer_output = batch_packed
         for layer_idx, layer in self.lstm_stack.items():
@@ -432,7 +453,10 @@ class AugmentedLSTMCRF(nn.Module):
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
-        return -self.crf(logits, batch["labels"], mask=batch["mask"]), "loss/crf"
+        return (
+            -self.crf(logits, batch["labels"], mask=batch["mask"]),
+            "loss/crf",
+        )
 
     def get_loss_ensemble(self, batch, cuda):
 
@@ -443,17 +467,24 @@ class AugmentedLSTMCRF(nn.Module):
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
-        return -self.crf(logits, batch["labels"], mask=batch["mask"]), layer_output
+        return (
+            -self.crf(logits, batch["labels"], mask=batch["mask"]),
+            layer_output,
+        )
 
     def get_labels(self, batch, cuda, idx_iteration: int = None):
 
-        inverted_label_mapping = {v: k for k, v in self.mappings["ner_labels"].items()}
+        inverted_label_mapping = {
+            v: k for k, v in self.mappings["ner_labels"].items()
+        }
 
         if cuda:
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
-        layer_output = self.forward(batch=batch, cuda=cuda, idx_iteration=idx_iteration)
+        layer_output = self.forward(
+            batch=batch, cuda=cuda, idx_iteration=idx_iteration
+        )
         logits = self.projection_layer(layer_output)
         best_paths = self.crf.viterbi_tags(logits, batch["mask"])
 
@@ -470,10 +501,14 @@ class AugmentedLSTMCRF(nn.Module):
         gs_converted = list()
 
         for path in pred:
-            pred_converted.append([inverted_label_mapping.get(item) for item in path])
+            pred_converted.append(
+                [inverted_label_mapping.get(item) for item in path]
+            )
 
         for path in gs:
-            gs_converted.append([inverted_label_mapping.get(item) for item in path])
+            gs_converted.append(
+                [inverted_label_mapping.get(item) for item in path]
+            )
 
         gs_converted = [item for seq in gs_converted for item in seq]
         pred_converted = [item for seq in pred_converted for item in seq]
@@ -482,7 +517,9 @@ class AugmentedLSTMCRF(nn.Module):
 
     def infer_labels(self, batch, cuda):
 
-        inverted_label_mapping = {v: k for k, v in self.mappings["ner_labels"].items()}
+        inverted_label_mapping = {
+            v: k for k, v in self.mappings["ner_labels"].items()
+        }
 
         if cuda:
             batch["mask"] = batch["mask"].cuda()
@@ -495,7 +532,9 @@ class AugmentedLSTMCRF(nn.Module):
         pred_converted = list()
 
         for path in pred:
-            pred_converted.append([inverted_label_mapping.get(item) for item in path])
+            pred_converted.append(
+                [inverted_label_mapping.get(item) for item in path]
+            )
 
         return pred_converted
 

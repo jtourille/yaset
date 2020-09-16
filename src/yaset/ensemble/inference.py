@@ -7,12 +7,13 @@ from allennlp.modules.elmo import batch_to_ids
 
 
 class NERModel:
-
-    def __init__(self,
-                 model_mappings: dict = None,
-                 model: nn.Module = None,
-                 model_options: dict = None,
-                 sentence_size_mapping: dict = None):
+    def __init__(
+        self,
+        model_mappings: dict = None,
+        model: nn.Module = None,
+        model_options: dict = None,
+        sentence_size_mapping: dict = None,
+    ):
 
         self.mappings = model_mappings
         self.model = model
@@ -43,22 +44,31 @@ class NERModel:
                 "str": list(),
                 "chr_cnn": list(),
                 "chr_lstm": list(),
-
             }
 
             for token in sentence:
                 token_form = token
 
                 token_lower = token_form.lower()
-                token_chr_cnn = [model_mapping["characters"].get("<bow>")] + \
-                                [model_mapping["characters"].get(char) for char in token_form
-                                 if model_mapping["characters"].get(char)] + \
-                                [model_mapping["characters"].get("<eow>")]
-                token_chr_lstm = [model_mapping["characters"].get(char) for char in token_form
-                                  if model_mapping["characters"].get(char)]
+                token_chr_cnn = (
+                    [model_mapping["characters"].get("<bow>")]
+                    + [
+                        model_mapping["characters"].get(char)
+                        for char in token_form
+                        if model_mapping["characters"].get(char)
+                    ]
+                    + [model_mapping["characters"].get("<eow>")]
+                )
+                token_chr_lstm = [
+                    model_mapping["characters"].get(char)
+                    for char in token_form
+                    if model_mapping["characters"].get(char)
+                ]
 
                 model_instance["tok"].append(
-                    model_mapping["tokens"].get(token_lower, model_mapping["tokens"].get("<unk>"))
+                    model_mapping["tokens"].get(
+                        token_lower, model_mapping["tokens"].get("<unk>")
+                    )
                 )
                 model_instance["str"].append(token_form)
                 model_instance["chr_cnn"].append(token_chr_cnn)
@@ -102,7 +112,9 @@ class NERModel:
             for model_id, model_instance in instance.items():
 
                 tok_pad_id = self.mappings[model_id].get("tokens").get("<pad>")
-                chr_pad_id = self.mappings[model_id].get("characters").get("<pad>")
+                chr_pad_id = (
+                    self.mappings[model_id].get("characters").get("<pad>")
+                )
 
                 # CHARS
                 # =====
@@ -154,9 +166,16 @@ class NERModel:
                 # TOKENS
                 # ======
 
-                final_batch[model_id]["tok_len"].append(len(model_instance["chr_lstm"]))
+                final_batch[model_id]["tok_len"].append(
+                    len(model_instance["chr_lstm"])
+                )
 
-                if self.options.get(model_id).get("embeddings").get("pretrained").get("use"):
+                if (
+                    self.options.get(model_id)
+                    .get("embeddings")
+                    .get("pretrained")
+                    .get("use")
+                ):
                     cur_tokens = copy.deepcopy(model_instance["tok"])
 
                     while len(cur_tokens) < max_len_tok:
@@ -169,28 +188,52 @@ class NERModel:
                 # SENTENCE SIZE
                 # =============
 
-                final_batch[model_id]["sent_size"].append(model_instance["sent_size"])
+                final_batch[model_id]["sent_size"].append(
+                    model_instance["sent_size"]
+                )
 
         final_batch_tensorised = dict()
         for model_id, model_batch in final_batch.items():
             final_batch_tensorised[model_id] = dict()
 
             final_batch_tensorised[model_id]["str"] = model_batch["str"]
-            final_batch_tensorised[model_id]["elmo"] = batch_to_ids(model_batch["str"])
+            final_batch_tensorised[model_id]["elmo"] = batch_to_ids(
+                model_batch["str"]
+            )
 
-            final_batch_tensorised[model_id]["chr_lstm"] = torch.LongTensor(model_batch["chr_lstm"])
-            final_batch_tensorised[model_id]["chr_cnn"] = torch.LongTensor(model_batch["chr_cnn"])
-            final_batch_tensorised[model_id]["chr_len"] = torch.LongTensor(model_batch["chr_len"])
+            final_batch_tensorised[model_id]["chr_lstm"] = torch.LongTensor(
+                model_batch["chr_lstm"]
+            )
+            final_batch_tensorised[model_id]["chr_cnn"] = torch.LongTensor(
+                model_batch["chr_cnn"]
+            )
+            final_batch_tensorised[model_id]["chr_len"] = torch.LongTensor(
+                model_batch["chr_len"]
+            )
 
-            final_batch_tensorised[model_id]["tok"] = torch.LongTensor(model_batch["tok"])
-            final_batch_tensorised[model_id]["tok_len"] = torch.LongTensor(model_batch["tok_len"])
+            final_batch_tensorised[model_id]["tok"] = torch.LongTensor(
+                model_batch["tok"]
+            )
+            final_batch_tensorised[model_id]["tok_len"] = torch.LongTensor(
+                model_batch["tok_len"]
+            )
 
-            final_batch_tensorised[model_id]["mask"] = torch.LongTensor(model_batch["mask"])
+            final_batch_tensorised[model_id]["mask"] = torch.LongTensor(
+                model_batch["mask"]
+            )
 
-            final_batch_tensorised[model_id]["size"] = final_batch_tensorised[model_id]["chr_lstm"].size(0)
+            final_batch_tensorised[model_id]["size"] = final_batch_tensorised[
+                model_id
+            ]["chr_lstm"].size(0)
 
-        final_batch_tensorised["sent_size"] = torch.LongTensor(final_batch["model_1"]["sent_size"])
-        final_batch_tensorised["mask"] = torch.LongTensor(final_batch["model_1"]["mask"])
-        final_batch_tensorised["size"] = final_batch_tensorised["model_1"]["chr_lstm"].size(0)
+        final_batch_tensorised["sent_size"] = torch.LongTensor(
+            final_batch["model_1"]["sent_size"]
+        )
+        final_batch_tensorised["mask"] = torch.LongTensor(
+            final_batch["model_1"]["mask"]
+        )
+        final_batch_tensorised["size"] = final_batch_tensorised["model_1"][
+            "chr_lstm"
+        ].size(0)
 
         return final_batch_tensorised

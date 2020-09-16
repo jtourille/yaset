@@ -6,11 +6,12 @@ from allennlp.modules.elmo import batch_to_ids
 
 
 class NERModel:
-
-    def __init__(self,
-                 mappings: dict = None,
-                 model: nn.Module = None,
-                 options: dict = None):
+    def __init__(
+        self,
+        mappings: dict = None,
+        model: nn.Module = None,
+        options: dict = None,
+    ):
 
         self.mappings = mappings
         self.model = model
@@ -52,20 +53,30 @@ class NERModel:
             "tok": list(),
             "str": list(),
             "chr_cnn": list(),
-            "chr_lstm": list()
+            "chr_lstm": list(),
         }
 
         for token in sentence:
             token_lower = token.lower()
-            token_chr_cnn = [self.mappings["characters"].get("<bow>")] + \
-                            [self.mappings["characters"].get(char) for char in token
-                             if self.mappings["characters"].get(char)] + \
-                            [self.mappings["characters"].get("<eow>")]
-            token_chr_lstm = [self.mappings["characters"].get(char) for char in token
-                              if self.mappings["characters"].get(char)]
+            token_chr_cnn = (
+                [self.mappings["characters"].get("<bow>")]
+                + [
+                    self.mappings["characters"].get(char)
+                    for char in token
+                    if self.mappings["characters"].get(char)
+                ]
+                + [self.mappings["characters"].get("<eow>")]
+            )
+            token_chr_lstm = [
+                self.mappings["characters"].get(char)
+                for char in token
+                if self.mappings["characters"].get(char)
+            ]
 
             new_instance["tok"].append(
-                self.mappings["tokens"].get(token_lower, self.mappings["tokens"].get("<unk>"))
+                self.mappings["tokens"].get(
+                    token_lower, self.mappings["tokens"].get("<unk>")
+                )
             )
             new_instance["str"].append(token)
             new_instance["chr_cnn"].append(token_chr_cnn)
@@ -96,14 +107,10 @@ class NERModel:
             "chr_cnn": list(),
             "chr_lstm": list(),
             "chr_len": list(),
-
             "tok": list(),
             "tok_len": list(),
-
             "str": list(),
-
             "elmo": None,
-
             "mask": list(),
         }
 

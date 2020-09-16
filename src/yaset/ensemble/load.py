@@ -5,17 +5,19 @@ import os
 import _jsonnet
 import torch
 import torch.nn as nn
-
 from yaset.ensemble.inference import NERModel
-from yaset.ensemble.train import load_mappings, load_options, SENTENCE_SIZE_MAPPING
+from yaset.ensemble.train import (
+    load_mappings,
+    load_options,
+    SENTENCE_SIZE_MAPPING,
+)
 from yaset.nn.ensemble import EnsembleWithAttention
 from yaset.utils.config import replace_auto
 from yaset.utils.load import load_model
 from yaset.utils.logging import TrainLogger
 
 
-def load_model_ensemble(model_dir: str = None,
-                        cuda: bool = None):
+def load_model_ensemble(model_dir: str = None, cuda: bool = None):
     """
     Load NER ensemble model
 
@@ -27,7 +29,9 @@ def load_model_ensemble(model_dir: str = None,
         NERModel: NER ensemble model
     """
 
-    model, model_options, model_mappings = load_model_ensemble_helper(model_dir=model_dir)
+    model, model_options, model_mappings = load_model_ensemble_helper(
+        model_dir=model_dir
+    )
 
     option_file = os.path.join(os.path.abspath(model_dir), "options.jsonnet")
     options_json = _jsonnet.evaluate_file(option_file)
@@ -38,10 +42,12 @@ def load_model_ensemble(model_dir: str = None,
         logging.info("Switching to cuda")
         model.cuda()
 
-    ner_model = NERModel(model_mappings=model_mappings,
-                         model=model,
-                         model_options=model_options,
-                         sentence_size_mapping=SENTENCE_SIZE_MAPPING)
+    ner_model = NERModel(
+        model_mappings=model_mappings,
+        model=model,
+        model_options=model_options,
+        sentence_size_mapping=SENTENCE_SIZE_MAPPING,
+    )
 
     return ner_model
 
@@ -88,17 +94,21 @@ def load_model_ensemble_helper(model_dir: str = None):
     options = json.loads(options_json)
     replace_auto(options=options)
 
-    model_mappings = load_mappings(model_1=model_1,
-                                   model_2=model_2,
-                                   model_3=model_3,
-                                   model_4=model_4,
-                                   model_5=model_5)
+    model_mappings = load_mappings(
+        model_1=model_1,
+        model_2=model_2,
+        model_3=model_3,
+        model_4=model_4,
+        model_5=model_5,
+    )
 
-    model_options = load_options(model_1=model_1,
-                                 model_2=model_2,
-                                 model_3=model_3,
-                                 model_4=model_4,
-                                 model_5=model_5)
+    model_options = load_options(
+        model_1=model_1,
+        model_2=model_2,
+        model_3=model_3,
+        model_4=model_4,
+        model_5=model_5,
+    )
 
     train_logger = TrainLogger(tensorboard_path=tensorboard_dir)
     train_logger.load_json_file(filepath=logging_file)
@@ -174,20 +184,28 @@ def load_model_ensemble_helper(model_dir: str = None):
     #     )
     if options.get("type") == "ensemble-with-attention":
         model = EnsembleWithAttention(
-            attention_final_hidden_size=options.get("network_structure").get("attention_final_hidden_size"),
-            attention_final_dropout_rate=options.get("network_structure").get("attention_final_dropout_rate"),
-            attention_mixin_hidden_size=options.get("network_structure").get("attention_mixin_hidden_size"),
-            attention_mixin_dropout_rate=options.get("network_structure").get("attention_mixin_dropout_rate"),
+            attention_final_hidden_size=options.get("network_structure").get(
+                "attention_final_hidden_size"
+            ),
+            attention_final_dropout_rate=options.get("network_structure").get(
+                "attention_final_dropout_rate"
+            ),
+            attention_mixin_hidden_size=options.get("network_structure").get(
+                "attention_mixin_hidden_size"
+            ),
+            attention_mixin_dropout_rate=options.get("network_structure").get(
+                "attention_mixin_dropout_rate"
+            ),
             mappings=model_mappings[reference_id],
             models=models,
             num_labels=len(model_mappings[reference_id]["ner_labels"]),
-            reference_id=reference_id
+            reference_id=reference_id,
         )
 
     else:
         raise Exception("The model does not exist")
 
     logging.debug("Loading weights")
-    model.load_state_dict(torch.load(model_file, map_location='cpu'))
+    model.load_state_dict(torch.load(model_file, map_location="cpu"))
 
     return model, model_options, model_mappings

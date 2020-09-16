@@ -1,5 +1,3 @@
-
-
 def replace_auto(options: dict = None):
     for key, value in options.items():
         if isinstance(value, dict):

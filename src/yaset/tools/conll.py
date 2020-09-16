@@ -3,8 +3,9 @@ import os
 import re
 
 
-def convert_spaces_to_tabulations(input_file: str = None,
-                                  output_file: str = None) -> None:
+def convert_spaces_to_tabulations(
+    input_file: str = None, output_file: str = None
+) -> None:
     """
     Convert a CoNLL file with spaces as column separators into a CoNLL file with tabulations as column separators
 
@@ -27,10 +28,12 @@ def convert_spaces_to_tabulations(input_file: str = None,
                 output_file.write("{}\n".format("\t".join(parts)))
 
 
-def convert_labels(input_file: str = None,
-                   output_file: str = None,
-                   input_label_type: str = None,
-                   output_label_type: str = None):
+def convert_labels(
+    input_file: str = None,
+    output_file: str = None,
+    input_label_type: str = None,
+    output_label_type: str = None,
+):
     """
     Convert NER tagging schemes
 
@@ -51,10 +54,14 @@ def convert_labels(input_file: str = None,
             for line in ifile:
                 if re.match(r"^$", line):
                     if len(sequence_buffer) > 0:
-                        output_labels = convert_sequence(input_sequence=sequence_buffer,
-                                                         input_label_type=input_label_type,
-                                                         output_label_type=output_label_type)
-                        for input_token, label in zip(sequence_buffer, output_labels):
+                        output_labels = convert_sequence(
+                            input_sequence=sequence_buffer,
+                            input_label_type=input_label_type,
+                            output_label_type=output_label_type,
+                        )
+                        for input_token, label in zip(
+                            sequence_buffer, output_labels
+                        ):
                             final_parts = input_token[:-1] + [label]
                             ofile.write("{}\n".format("\t".join(final_parts)))
                             sequence_buffer = list()
@@ -64,18 +71,19 @@ def convert_labels(input_file: str = None,
                 sequence_buffer.append(line.rstrip("\n").split("\t"))
 
             if len(sequence_buffer) > 0:
-                output_labels = convert_sequence(input_sequence=sequence_buffer,
-                                                 input_label_type=input_label_type,
-                                                 output_label_type=output_label_type)
+                output_labels = convert_sequence(
+                    input_sequence=sequence_buffer,
+                    input_label_type=input_label_type,
+                    output_label_type=output_label_type,
+                )
                 for input_token, label in zip(sequence_buffer, output_labels):
                     final_parts = input_token[:-1] + [label]
                     ofile.write("{}\n".format("\t".join(final_parts)))
 
-    check = check_labels(input_file=output_file, label_type=output_label_type)
+    # check = check_labels(input_file=output_file, label_type=output_label_type)
 
 
-def check_labels(input_file: str = None,
-                 label_type: str = None):
+def check_labels(input_file: str = None, label_type: str = None):
 
     if label_type == "BIOUL":
         return check_bioul_labels(input_file=input_file)
@@ -96,13 +104,19 @@ def check_bioul_labels(input_file: str = None):
         for line in ifile:
             if re.match("^$", line):
                 if len(sentence_buffer) > 0:
-                    sent_entities = extract_sent_entities(sentence_buffer=sentence_buffer)
+                    sent_entities = extract_sent_entities(
+                        sentence_buffer=sentence_buffer
+                    )
 
                     for entity in sent_entities:
                         category = set([cat for _, cat in entity])
                         assert len(list(category)) == 1
 
-                        new_entity = (sentence_id, list(category)[0], [i for i, _ in entity])
+                        new_entity = (
+                            sentence_id,
+                            list(category)[0],
+                            [i for i, _ in entity],
+                        )
                         entities.append(new_entity)
 
                     sentence_buffer = list()
@@ -115,13 +129,19 @@ def check_bioul_labels(input_file: str = None):
             sentence_buffer.append(parts)
 
         if len(sentence_buffer) > 0:
-            sent_entities = extract_sent_entities(sentence_buffer=sentence_buffer)
+            sent_entities = extract_sent_entities(
+                sentence_buffer=sentence_buffer
+            )
 
             for entity in sent_entities:
                 category = set([cat for _, cat in entity])
                 assert len(list(category)) == 1
 
-                new_entity = (sentence_id, list(category)[0], [i for i, _ in entity])
+                new_entity = (
+                    sentence_id,
+                    list(category)[0],
+                    [i for i, _ in entity],
+                )
                 entities.append(new_entity)
 
     return True
@@ -158,9 +178,11 @@ def split_tag(tag: str = None):
     return tag.split("-")
 
 
-def convert_sequence(input_sequence: list = None,
-                     input_label_type: str = None,
-                     output_label_type: str = None):
+def convert_sequence(
+    input_sequence: list = None,
+    input_label_type: str = None,
+    output_label_type: str = None,
+):
 
     input_labels = [token[-1] for token in input_sequence]
 
@@ -174,15 +196,23 @@ def convert_sequence(input_sequence: list = None,
     if output_label_type == "BIOUL":
         for entity in entities:
             if len(entity) == 1:
-                output_labels[entity[0]] = "U-{}".format(input_labels[entity[0]].split("-")[1])
+                output_labels[entity[0]] = "U-{}".format(
+                    input_labels[entity[0]].split("-")[1]
+                )
             else:
                 for i, tok_idx in enumerate(entity):
                     if i == 0:
-                        output_labels[tok_idx] = "B-{}".format(input_labels[tok_idx].split("-")[1])
+                        output_labels[tok_idx] = "B-{}".format(
+                            input_labels[tok_idx].split("-")[1]
+                        )
                     elif i == len(entity) - 1:
-                        output_labels[tok_idx] = "L-{}".format(input_labels[tok_idx].split("-")[1])
+                        output_labels[tok_idx] = "L-{}".format(
+                            input_labels[tok_idx].split("-")[1]
+                        )
                     else:
-                        output_labels[tok_idx] = "I-{}".format(input_labels[tok_idx].split("-")[1])
+                        output_labels[tok_idx] = "I-{}".format(
+                            input_labels[tok_idx].split("-")[1]
+                        )
 
     else:
         raise Exception("Unrecognised output format")

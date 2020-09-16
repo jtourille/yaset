@@ -13,35 +13,43 @@ import re
 
 from collections import defaultdict, namedtuple
 
-Metrics = namedtuple('Metrics', 'tp fp fn prec rec fscore')
+Metrics = namedtuple("Metrics", "tp fp fn prec rec fscore")
 
 
 def evaluate_ner(corr, pred):
 
     counts = EvalCounts()
 
-    in_correct = False        # currently processed chunks is correct until now
-    last_correct = 'O'        # previous chunk tag in corpus
-    last_correct_type = ''    # type of previously identified chunk tag
-    last_guessed = 'O'        # previously identified chunk tag
-    last_guessed_type = ''    # type of previous chunk tag in corpus
+    in_correct = False  # currently processed chunks is correct until now
+    last_correct = "O"  # previous chunk tag in corpus
+    last_correct_type = ""  # type of previously identified chunk tag
+    last_guessed = "O"  # previously identified chunk tag
+    last_guessed_type = ""  # type of previous chunk tag in corpus
 
     for corr_label, pred_label in zip(corr, pred):
 
         guessed, guessed_type = parse_tag(pred_label)
         correct, correct_type = parse_tag(corr_label)
 
-        end_correct = end_of_chunk(last_correct, correct,
-                                   last_correct_type, correct_type)
-        end_guessed = end_of_chunk(last_guessed, guessed,
-                                   last_guessed_type, guessed_type)
-        start_correct = start_of_chunk(last_correct, correct,
-                                       last_correct_type, correct_type)
-        start_guessed = start_of_chunk(last_guessed, guessed,
-                                       last_guessed_type, guessed_type)
+        end_correct = end_of_chunk(
+            last_correct, correct, last_correct_type, correct_type
+        )
+        end_guessed = end_of_chunk(
+            last_guessed, guessed, last_guessed_type, guessed_type
+        )
+        start_correct = start_of_chunk(
+            last_correct, correct, last_correct_type, correct_type
+        )
+        start_guessed = start_of_chunk(
+            last_guessed, guessed, last_guessed_type, guessed_type
+        )
 
         if in_correct:
-            if end_correct and end_guessed and last_guessed_type == last_correct_type:
+            if (
+                end_correct
+                and end_guessed
+                and last_guessed_type == last_correct_type
+            ):
                 in_correct = False
                 counts.correct_chunk += 1
                 counts.t_correct_chunk[last_correct_type] += 1
@@ -76,13 +84,12 @@ def evaluate_ner(corr, pred):
 
 
 class EvalCounts(object):
-
     def __init__(self):
-        self.correct_chunk = 0    # number of correctly identified chunks
-        self.correct_tags = 0     # number of correct chunk tags
-        self.found_correct = 0    # number of chunks in corpus
-        self.found_guessed = 0    # number of identified chunks
-        self.token_counter = 0    # token counter (ignores sentence breaks)
+        self.correct_chunk = 0  # number of correctly identified chunks
+        self.correct_tags = 0  # number of correct chunk tags
+        self.found_correct = 0  # number of chunks in corpus
+        self.found_guessed = 0  # number of identified chunks
+        self.token_counter = 0  # token counter (ignores sentence breaks)
 
         # counts by type
         self.t_correct_chunk = defaultdict(int)
@@ -91,8 +98,8 @@ class EvalCounts(object):
 
 
 def parse_tag(t):
-    m = re.match(r'^([^-]*)-(.*)$', t)
-    return m.groups() if m else (t, '')
+    m = re.match(r"^([^-]*)-(.*)$", t)
+    return m.groups() if m else (t, "")
 
 
 def uniq(iterable):
@@ -101,9 +108,9 @@ def uniq(iterable):
 
 
 def calculate_metrics(correct, guessed, total):
-    tp, fp, fn = correct, guessed-correct, total-correct
-    p = 0 if tp + fp == 0 else 1.*tp / (tp + fp)
-    r = 0 if tp + fn == 0 else 1.*tp / (tp + fn)
+    tp, fp, fn = correct, guessed - correct, total - correct
+    p = 0 if tp + fp == 0 else 1.0 * tp / (tp + fp)
+    r = 0 if tp + fn == 0 else 1.0 * tp / (tp + fn)
     f = 0 if p + r == 0 else 2 * p * r / (p + r)
     return Metrics(tp, fp, fn, p, r, f)
 
@@ -114,7 +121,9 @@ def metrics(counts):
         c.correct_chunk, c.found_guessed, c.found_correct
     )
     by_type = {}
-    for t in uniq(list(c.t_found_correct.keys()) + list(c.t_found_guessed.keys())):
+    for t in uniq(
+        list(c.t_found_correct.keys()) + list(c.t_found_guessed.keys())
+    ):
         by_type[t] = calculate_metrics(
             c.t_correct_chunk[t], c.t_found_guessed[t], c.t_found_correct[t]
         )
@@ -126,38 +135,38 @@ def end_of_chunk(prev_tag, tag, prev_type, type_):
     # arguments: previous and current chunk tags, previous and current types
     chunk_end = False
 
-    if prev_tag == 'E':
+    if prev_tag == "E":
         chunk_end = True
 
-    if prev_tag == 'S':
+    if prev_tag == "S":
         chunk_end = True
 
-    if prev_tag == 'B' and tag == 'B':
+    if prev_tag == "B" and tag == "B":
         chunk_end = True
 
-    if prev_tag == 'B' and tag == 'S':
+    if prev_tag == "B" and tag == "S":
         chunk_end = True
 
-    if prev_tag == 'B' and tag == 'O':
+    if prev_tag == "B" and tag == "O":
         chunk_end = True
 
-    if prev_tag == 'I' and tag == 'B':
+    if prev_tag == "I" and tag == "B":
         chunk_end = True
 
-    if prev_tag == 'I' and tag == 'S':
+    if prev_tag == "I" and tag == "S":
         chunk_end = True
 
-    if prev_tag == 'I' and tag == 'O':
+    if prev_tag == "I" and tag == "O":
         chunk_end = True
 
-    if prev_tag != 'O' and prev_tag != '.' and prev_type != type_:
+    if prev_tag != "O" and prev_tag != "." and prev_type != type_:
         chunk_end = True
 
     # these chunks are assumed to have length 1
-    if prev_tag == ']':
+    if prev_tag == "]":
         chunk_end = True
 
-    if prev_tag == '[':
+    if prev_tag == "[":
         chunk_end = True
 
     return chunk_end
@@ -168,39 +177,38 @@ def start_of_chunk(prev_tag, tag, prev_type, type_):
     # arguments: previous and current chunk tags, previous and current types
     chunk_start = False
 
-    if tag == 'B':
+    if tag == "B":
         chunk_start = True
 
-    if tag == 'S':
+    if tag == "S":
         chunk_start = True
 
-    if prev_tag == 'E' and tag == 'E':
+    if prev_tag == "E" and tag == "E":
         chunk_start = True
 
-    if prev_tag == 'E' and tag == 'I':
+    if prev_tag == "E" and tag == "I":
         chunk_start = True
 
-    if prev_tag == 'S' and tag == 'E':
+    if prev_tag == "S" and tag == "E":
         chunk_start = True
 
-    if prev_tag == 'S' and tag == 'I':
+    if prev_tag == "S" and tag == "I":
         chunk_start = True
 
-    if prev_tag == 'O' and tag == 'E':
+    if prev_tag == "O" and tag == "E":
         chunk_start = True
 
-    if prev_tag == 'O' and tag == 'I':
+    if prev_tag == "O" and tag == "I":
         chunk_start = True
 
-    if tag != 'O' and tag != '.' and prev_type != type_:
+    if tag != "O" and tag != "." and prev_type != type_:
         chunk_start = True
 
     # these chunks are assumed to have length 1
-    if tag == '[':
+    if tag == "[":
         chunk_start = True
 
-    if tag == ']':
+    if tag == "]":
         chunk_start = True
 
     return chunk_start
-
