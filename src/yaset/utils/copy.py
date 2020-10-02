@@ -1,12 +1,23 @@
 import os
 import shutil
 
-from .path import ensure_dir
+from yaset.utils.path import ensure_dir
 
 
 def copy_embedding_models(
     embeddings_options: dict = None, output_dir: str = None
 ):
+    """
+    Copy pretrained embeddings specified in configuration file to model directory
+
+    :param embeddings_options: configuration file portion related to embeddings
+    :type embeddings_options: dict
+
+    :param output_dir: directory where files will be copied
+    :type output_dir: str
+
+    :return: None
+    """
 
     if embeddings_options.get("elmo").get("use"):
         target_subdir = os.path.join(os.path.abspath(output_dir), "elmo")
