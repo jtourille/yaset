@@ -1,4 +1,12 @@
-def replace_auto(options: dict = None):
+def replace_auto(options: dict = None) -> None:
+    """
+    Replace the keyword 'auto' by '-1' in configuration files
+
+    :param options: configuration parameters
+    :type options: dict
+
+    :return: None
+    """
     for key, value in options.items():
         if isinstance(value, dict):
             replace_auto(options=value)
