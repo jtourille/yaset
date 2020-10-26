@@ -4,6 +4,7 @@ import shutil
 import sys
 
 import click
+from yaset.single.train import train_single_model
 
 
 @click.group()
@@ -24,7 +25,7 @@ def cli(debug):
     log.addHandler(ch)
 
 
-@cli.command("TRAIN")
+@cli.command("TRAIN-SINGLE")
 @click.option(
     "--config-file",
     help="Training configuration file",
@@ -38,6 +39,7 @@ def cli(debug):
     required=True,
 )
 def train(config_file, output_dir):
+    """Train a single model"""
 
     config_file = os.path.abspath(config_file)
     output_dir = os.path.abspath(output_dir)
@@ -56,3 +58,5 @@ def train(config_file, output_dir):
         shutil.rmtree(output_dir)
 
     os.makedirs(output_dir)
+
+    train_single_model(option_file=config_file, output_dir=output_dir)
