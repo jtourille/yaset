@@ -6,7 +6,7 @@ from yaset.utils.path import ensure_dir
 
 def copy_embedding_models(
     embeddings_options: dict = None, output_dir: str = None
-):
+) -> None:
     """
     Copy pretrained embeddings specified in configuration file to model directory
 
