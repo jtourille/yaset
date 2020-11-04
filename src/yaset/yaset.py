@@ -59,4 +59,12 @@ def train(config_file, output_dir):
 
     os.makedirs(output_dir)
 
+    log_file = os.path.join(os.path.abspath(output_dir), "training.log")
+    log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    log = logging.getLogger("")
+
+    fh = logging.FileHandler(log_file, encoding="UTF-8")
+    fh.setFormatter(log_format)
+    log.addHandler(fh)
+
     train_single_model(option_file=config_file, output_dir=output_dir)
