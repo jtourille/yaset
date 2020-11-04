@@ -4,10 +4,10 @@ import os
 
 import _jsonnet
 import torch
-from yaset.inference.inference import NERModel
 from yaset.nn.crf import allowed_transitions
 from yaset.nn.embedding import Embedder
 from yaset.nn.lstmcrf import AugmentedLSTMCRF
+from yaset.single.nn import NERModel
 from yaset.utils.config import replace_auto
 from yaset.utils.logging import TrainLogger
 
@@ -32,7 +32,9 @@ def load_model_single(model_dir: str = None, cuda: bool = None):
 
     model.eval()
 
-    ner_model = NERModel(mappings=mappings, model=model, options=options)
+    ner_model = NERModel(
+        mappings=mappings, model=model, options=options, model_dir=model_dir
+    )
 
     return ner_model
 
@@ -73,7 +75,7 @@ def load_model(model_dir: str = None):
     train_logger = TrainLogger(tensorboard_path=tensorboard_dir)
     train_logger.load_json_file(filepath=logging_file)
 
-    best_idx, _ = train_logger.get_best_iteration()
+    best_idx, _ = train_logger.get_best_step(criterion="f1_score")
 
     model_file = os.path.join(parameter_dir, "model-{}.pth".format(best_idx))
 
@@ -83,13 +85,42 @@ def load_model(model_dir: str = None):
         pretrained_matrix=pretrained_matrix,
         pretrained_matrix_size=pretrained_matrix_size,
         mappings=mappings,
-        embedding_root_dir=model_dir,
+        embedding_root_dir=os.path.join(model_dir, "embeddings"),
     )
 
     constraints = allowed_transitions(
         options.get("data").get("format"),
-        {v: k for k, v in mappings["ner_labels"].items()},
+        {v: k for k, v in mappings.get("lbls").items()},
     )
+
+    # model = AugmentedLSTMCRF(
+    #     embedder=embedder,
+    #     constraints=constraints,
+    #     ffnn_hidden_layer_use=options.get("network_structure")
+    #     .get("ffnn")
+    #     .get("use"),
+    #     ffnn_hidden_layer_size=options.get("network_structure")
+    #     .get("ffnn")
+    #     .get("hidden_layer_size"),
+    #     ffnn_activation_function=options.get("network_structure")
+    #     .get("ffnn")
+    #     .get("activation_function"),
+    #     ffnn_input_dropout_rate=options.get("network_structure")
+    #     .get("ffnn")
+    #     .get("input_dropout_rate"),
+    #     input_size=embedder.embedding_size,
+    #     lstm_input_dropout_rate=options.get("network_structure").get(
+    #         "lstm_input_dropout_rate"
+    #     ),
+    #     lstm_hidden_size=options.get("network_structure").get("hidden_size"),
+    #     lstm_layer_dropout_rate=options.get("network_structure").get(
+    #         "lstm_layer_dropout_rate"
+    #     ),
+    #     mappings=mappings,
+    #     nb_layers=options.get("network_structure").get("nb_layers"),
+    #     num_labels=len(mappings["ner_labels"]),
+    #     use_highway=options.get("network_structure").get("use_highway"),
+    # )
 
     model = AugmentedLSTMCRF(
         embedder=embedder,
@@ -108,16 +139,22 @@ def load_model(model_dir: str = None):
         .get("input_dropout_rate"),
         input_size=embedder.embedding_size,
         lstm_input_dropout_rate=options.get("network_structure").get(
-            "lstm_input_dropout_rate"
+            "input_dropout_rate"
         ),
-        lstm_hidden_size=options.get("network_structure").get("hidden_size"),
-        lstm_layer_dropout_rate=options.get("network_structure").get(
-            "lstm_layer_dropout_rate"
-        ),
+        lstm_hidden_size=options.get("network_structure")
+        .get("lstm")
+        .get("hidden_size"),
+        lstm_layer_dropout_rate=options.get("network_structure")
+        .get("lstm")
+        .get("layer_dropout_rate"),
         mappings=mappings,
-        nb_layers=options.get("network_structure").get("nb_layers"),
-        num_labels=len(mappings["ner_labels"]),
-        use_highway=options.get("network_structure").get("use_highway"),
+        nb_layers=options.get("network_structure")
+        .get("lstm")
+        .get("nb_layers"),
+        num_labels=len(mappings.get("lbls")),
+        use_highway=options.get("network_structure")
+        .get("lstm")
+        .get("highway"),
     )
 
     logging.debug("Loading weights")

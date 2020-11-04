@@ -236,7 +236,7 @@ def extract_tag_cat(label):
         return label.split("-")
 
 
-def load_sentences(input_file: str = None):
+def load_sentences(input_file: str = None, debug: bool = False):
 
     all_sentences = list()
 
@@ -256,7 +256,10 @@ def load_sentences(input_file: str = None):
         if len(sentence_buffer) > 0:
             all_sentences.append(copy.deepcopy(sentence_buffer))
 
-    return all_sentences
+    if debug:
+        return all_sentences[:32]
+    else:
+        return all_sentences
 
 
 def extract_entities_iob1(input_labels: list = None):
