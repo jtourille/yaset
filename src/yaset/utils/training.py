@@ -1,16 +1,13 @@
 import logging
-import math
 import os
 from typing import Callable
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim
 import torch.utils.data
-
-from .logging import TrainLogger
-from ..utils.path import ensure_dir
+from seqeval.metrics import classification_report
+from yaset.utils.logging import TrainLogger
 
 try:
     from apex import amp
@@ -20,95 +17,101 @@ except ImportError:
     )
 
 
-def compute_steps(dataset_len: int = None, step: float = 0.05):
-    """
-    Compute step for checkpoint recording and logging
+def cycle(iterable):
+    while True:
+        for x in iterable:
+            yield x
 
-    Args:
-        dataset_len (int): dataset length (i.e. number of training instances)
-        step (float): desired logging step (e.g. 0.05 for logging every 5%)
 
-    Returns:
-        list: steps where logging should occur
-    """
-
-    step = math.ceil(dataset_len * step)
-    steps = list()
-
-    current = 0
-    while current + step <= dataset_len:
-        steps.append(current + step)
-        current += step
-
-    steps.append(dataset_len)
-
-    return steps
+# def compute_steps(dataset_len: int = None, step: float = 0.05):
+#     """
+#     Compute step for checkpoint recording and logging
+#
+#     Args:
+#         dataset_len (int): dataset length (i.e. number of training instances)
+#         step (float): desired logging step (e.g. 0.05 for logging every 5%)
+#
+#     Returns:
+#         list: steps where logging should occur
+#     """
+#
+#     step = math.ceil(dataset_len * step)
+#     steps = list()
+#
+#     current = 0
+#     while current + step <= dataset_len:
+#         steps.append(current + step)
+#         current += step
+#
+#     steps.append(dataset_len)
+#
+#     return steps
+#
 
 
 class Trainer:
     def __init__(
         self,
         accumulation_steps: int = None,
+        batch_size: int = None,
         clip_grad_norm: float = None,
         cuda: bool = False,
-        fp16: bool = None,
         dataloader_train: torch.utils.data.DataLoader = None,
         dataloader_dev: torch.utils.data.DataLoader = None,
         eval_function: Callable = None,
+        eval_every_n_steps: int = None,
+        fp16: bool = None,
         len_dataset_train: int = None,
         len_dataset_dev: int = None,
-        log_to_stdout_step: float = 0.05,
-        max_iterations: int = 100,
+        log_to_stdout_every_n_step: int = None,
+        lr_scheduler: object = None,
+        max_steps: int = None,
         model: nn.Module = None,
         optimizer: torch.optim.Optimizer = None,
-        patience: int = 10,
-        scheduler: object = None,
         train_logger: TrainLogger = None,
+        warmup_scheduler: torch.optim.lr_scheduler.LambdaLR = None,
         working_dir: str = None,
     ):
 
         self.accumulation_steps = accumulation_steps
+        self.batch_size = batch_size
         self.clip_grad_norm = clip_grad_norm
         self.cuda = cuda
-        self.fp16 = fp16
         self.dataloader_train = dataloader_train
         self.dataloader_dev = dataloader_dev
         self.eval_function = eval_function
+        self.eval_every_n_steps = eval_every_n_steps
+        self.fp16 = fp16
+        self.log_to_stdout_every_n_step = log_to_stdout_every_n_step
         self.len_dataset_train = len_dataset_train
         self.len_dataset_dev = len_dataset_dev
-        self.log_to_stdout_step = log_to_stdout_step
-        self.max_iterations = max_iterations
+        self.max_steps = max_steps
         self.model = model
         self.optimizer = optimizer
-        self.patience = patience
-        self.scheduler = scheduler
+        self.lr_scheduler = lr_scheduler
         self.train_logger = train_logger
+        self.warmup_scheduler = warmup_scheduler
         self.working_dir = working_dir
 
-        self.global_step = 0
-
-    def do_one_iteration(self, idx_iteration: int = None):
-
-        self.model.train()  # Switching to train mode
-
-        processed_iteration = 0
-        processed_batch_checkpoint = 0
-
-        logging_steps = compute_steps(
-            self.len_dataset_train, step=self.log_to_stdout_step
+        self.model_parameter_target_dir = os.path.join(
+            self.working_dir, "models"
         )
-        # todo: check if there is something to print
+        if not os.path.isdir(self.model_parameter_target_dir):
+            os.makedirs(self.model_parameter_target_dir)
 
-        # Reinitializing optimizer
-        self.optimizer.zero_grad()
+    def perform_training(self):
 
-        for batch_idx, batch in enumerate(self.dataloader_train):
-            # Incrementing counters
-            processed_iteration += batch["size"]
-            self.global_step += batch["size"]
-            processed_batch_checkpoint += 1
+        step_counter = 0
+        processed = 0
 
-            # Forward pass
+        self.optimizer.zero_grad()  # Reinitializing optimizer
+
+        dataloader_iterator = iter(cycle(self.dataloader_train))
+
+        for i in range(self.max_steps * self.accumulation_steps):
+            self.model.train()  # Switching to train mode
+            batch = next(dataloader_iterator)  # Grabbing next document
+
             loss, loss_name = self.model.get_loss(batch, cuda=self.cuda)
             loss = loss / self.accumulation_steps
 
@@ -120,16 +123,18 @@ class Trainer:
 
             # Logging loss
             self.train_logger.add_scalar(
-                name=loss_name, value=loss.item(), global_step=self.global_step
+                name=loss_name, value=loss.item(), global_step=i + 1
             )
 
             self.train_logger.add_loss(
                 loss_name=loss_name,
                 loss_value=loss.item(),
-                global_step=self.global_step,
+                global_step=i + 1,
             )
 
-            if (batch_idx + 1) % self.accumulation_steps == 0:
+            processed += batch.get("labels").size(0)
+
+            if (i + 1) % self.accumulation_steps == 0:
                 # Clipping gradient if necessary
                 if self.clip_grad_norm is not None:
                     if self.fp16:
@@ -148,136 +153,132 @@ class Trainer:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-            # Logging gradient mean and std
-            # for param_name, param in self.model.named_parameters():
-            #     if param.grad is None:
-            #         continue
-            #
-            #     values = param.grad.clone().cpu().data.numpy()
-            #     values = values[~np.isnan(values)]
-            #
-            #     self.train_logger.add_scalar(
-            #         name="grad_mean/" + param_name,
-            #         value=values.mean(),
-            #         global_step=self.global_step,
-            #     )
-            #     self.train_logger.add_scalar(
-            #         name="grad_std/" + param_name,
-            #         value=values.std(),
-            #         global_step=self.global_step,
-            #     )
+                if self.warmup_scheduler is not None:
+                    self.warmup_scheduler.step()
 
-            if (
-                processed_iteration >= logging_steps[0]
-                or processed_iteration == self.len_dataset_train
-            ):
-                # for param_name, param in self.model.named_parameters():
-                #
-                #     values = param.clone().cpu().data.numpy()
-                #     values = values[~np.isnan(values)]
-                #
-                #     self.train_logger.add_scalar(
-                #         name="parameter_mean/" + param_name,
-                #         value=values.mean(),
-                #         global_step=self.global_step,
-                #     )
-                #     self.train_logger.add_scalar(
-                #         name="parameter_std/" + param_name,
-                #         value=values.std(),
-                #         global_step=self.global_step,
-                #     )
+                    # Logging to file and stdout when applicable
+                if (step_counter + 1) % self.log_to_stdout_every_n_step == 0:
+                    checkpoint_payload = {
+                        "processed": processed,
+                    }
+                    for loss_name in self.train_logger.losses:
+                        checkpoint_payload[
+                            loss_name
+                        ] = self.train_logger.get_loss(
+                            loss_name=loss_name, global_step=i + 1
+                        )
 
-                checkpoint_name = "{:6.2f}".format(
-                    (processed_iteration / self.len_dataset_train) * 100
-                )
-                _ = logging_steps.pop(0)
-                checkpoint_payload = {"processed": processed_iteration}
-                for loss_name in self.train_logger.losses:
-                    checkpoint_payload[loss_name] = np.mean(
-                        [
-                            loss_value
-                            for _, loss_value in self.train_logger.losses[
-                                loss_name
-                            ]
-                        ]
+                    self.train_logger.add_checkpoint(
+                        step=step_counter + 1,
+                        checkpoint_payload=checkpoint_payload,
                     )
 
-                self.train_logger.add_checkpoint(
-                    idx_iteration=idx_iteration,
-                    checkpoint_name=checkpoint_name,
-                    checkpoint_payload=checkpoint_payload,
-                )
-
-                logging.info(
-                    self.train_logger.get_last_checkpoint_string(idx_iteration)
-                )
-
-                processed_batch_checkpoint = 0
-
-        # for name, param in self.model.named_parameters():
-        #     # Removing NaN values before making a histogram
-        #     values = param.clone().cpu().data.numpy()
-        #     values = values[~np.isnan(values)]
-        #
-        #     self.train_logger.add_histogram("params/" + name, values, idx_iteration)
-
-    def test_on_dev(self, idx_iteration: int = None):
-
-        with torch.no_grad():
-
-            self.model.eval()
-
-            processed_iteration = 0
-
-            steps = compute_steps(
-                self.len_dataset_dev, step=self.log_to_stdout_step
-            )
-
-            eval_payload = list()
-
-            for batch_idx, batch in enumerate(self.dataloader_dev):
-
-                processed_iteration += batch["size"]
-
-                batch_eval_payload = self.model.get_labels(
-                    batch, self.cuda, idx_iteration=idx_iteration
-                )
-                eval_payload.append(batch_eval_payload)
-
-                if (
-                    processed_iteration >= steps[0]
-                    or processed_iteration == self.len_dataset_dev
-                ):
-                    _ = steps.pop(0)
                     logging.info(
-                        "Processed={:5d} ({:6.2f}%)".format(
-                            processed_iteration,
-                            (processed_iteration / self.len_dataset_dev) * 100,
+                        self.train_logger.get_last_checkpoint_string(
+                            step_counter + 1
                         )
                     )
 
-            eval_payload = self.eval_function(eval_payload=eval_payload)
-            if self.scheduler is not None:
-                self.scheduler.step(eval_payload["main"])
+                if (
+                    (step_counter + 1) % self.eval_every_n_steps == 0
+                    or step_counter + 1 == self.max_steps
+                ):
+                    logging.info(
+                        "BEGIN EVALUATION AT STEP: {}".format(step_counter + 1)
+                    )
+                    logging.info("Gathering evaluation metrics...")
+
+                    gs_values, pred_values = self.test_on_dev(
+                        step_counter=step_counter
+                    )
+
+                    step_scores = self.train_logger.get_dev_score(
+                        step=step_counter + 1
+                    )
+
+                    self.train_logger.add_step_values(
+                        step=step_counter + 1,
+                        gs_values=gs_values,
+                        pred_values=pred_values,
+                    )
+
+                    logging.info(
+                        "STEP #{} | precision={:.3f} | recall={:.3f} | f1={:.3f}".format(
+                            step_counter + 1,
+                            step_scores["step"]["precision"],
+                            step_scores["step"]["recall"],
+                            step_scores["step"]["f1_score"],
+                        )
+                    )
+
+                    logging.info(
+                        "\n{}".format(
+                            classification_report(gs_values, pred_values)
+                        )
+                    )
+
+                best_step, _ = self.train_logger.get_best_step(
+                    criterion="f1_score"
+                )
+                # Saving current parameters if this iteration gives the best score on the development dataset
+                if best_step == step_counter + 1:
+                    logging.info(
+                        "Best model so far, saving parameters to disk."
+                    )
+                    self.clear_model_dir(
+                        self.model_parameter_target_dir
+                    )  # Clearing parameter directory
+
+                    target_model_filepath = os.path.join(
+                        self.model_parameter_target_dir,
+                        "model-{}.pth".format(best_step),
+                    )
+                    torch.save(
+                        self.model.state_dict(), target_model_filepath
+                    )  # Saving model parameters
+
+                step_counter += 1
+
+        # Dumping training log values to disk
+        logging.info("Dumping log object to disk")
+        target_log_file = os.path.join(
+            os.path.abspath(self.working_dir), "train_log.pkl"
+        )
+        target_tensorboard_log_file = os.path.join(
+            os.path.abspath(self.working_dir), "tb_log.pkl"
+        )
+        self.train_logger.dump_to_disk(
+            custom_log_file=target_log_file,
+            tensorboard_log_file=target_tensorboard_log_file,
+        )
+        self.train_logger.close_writer()
+
+    def test_on_dev(self, step_counter: int = None):
+
+        self.model.eval()
+
+        with torch.no_grad():
+
+            eval_payload = list()
+
+            for batch in self.dataloader_dev:
+                batch_eval_payload = self.model.get_labels(batch, self.cuda)
+                eval_payload.append(batch_eval_payload)
+
+            metric_payload = self.eval_function(eval_payload=eval_payload)
 
             self.train_logger.add_dev_score(
-                idx_iteration=idx_iteration, dev_score=eval_payload["main"]
+                step=step_counter + 1, payload=metric_payload
             )
-            for name, value in eval_payload["tensorboard"]:
-                self.train_logger.add_scalar(
-                    name=name, value=value, global_step=idx_iteration
-                )
-                self.train_logger.add_other_score_dev(
-                    idx_iteration=idx_iteration,
-                    score_name=name,
-                    score_value=value,
-                )
 
-            logging.info("Iteration score: {}".format(eval_payload["main"]))
-            for name, value in self.train_logger.dev_other_scores[
-                idx_iteration
-            ].items():
-                logging.info("{} = {}".format(name, value))
+        gs = list()
+        pred = list()
+
+        for item in eval_payload:
+            pred.extend(item.get("pred"))
+            gs.extend(item.get("gs"))
+
+        return gs, pred
 
     @staticmethod
     def clear_model_dir(model_dir):
@@ -296,98 +297,98 @@ class Trainer:
                 file_to_be_removed = os.path.join(root, filename)
                 os.remove(file_to_be_removed)
 
-    def perform_training(self):
-        """
-        Perform training of a model
-
-        Args:
-            **kwargs: other arguments that will be forwarded to the custom functions
-
-        Returns:
-            None
-        """
-
-        # Creating directory where model parameters will be stored
-        model_parameter_target_dir = os.path.join(self.working_dir, "models")
-        ensure_dir(model_parameter_target_dir)
-
-        # Training outer-loop
-        for idx_iteration in range(1, self.max_iterations + 1):
-            logging.info(
-                "== BEGIN TRAINING ITERATION {:04d} ==".format(idx_iteration)
-            )
-
-            # Train for one iteration
-            self.do_one_iteration(idx_iteration=idx_iteration)
-
-            logging.info(
-                "== END TRAINING ITERATION {:04d} ==".format(idx_iteration)
-            )
-
-            logging.info(
-                "== BEGIN TESTING ON DEV FOR ITERATION {:04d} ==".format(
-                    idx_iteration
-                )
-            )
-
-            # Test on development dataset
-            self.test_on_dev(idx_iteration=idx_iteration)
-
-            logging.info(
-                "== END TESTING ON DEV FOR ITERATION {:04d} ==".format(
-                    idx_iteration
-                )
-            )
-
-            # Fetching best iteration index
-            best_ite, _ = self.train_logger.get_best_iteration()
-
-            # Saving current parameters if this iteration gives the best score on the development dataset
-            if best_ite == idx_iteration:
-                logging.info("Best model so far, saving parameters to disk.")
-                self.clear_model_dir(
-                    model_parameter_target_dir
-                )  # Clearing parameter directory
-
-                target_model_filepath = os.path.join(
-                    model_parameter_target_dir,
-                    "model-{}.pth".format(idx_iteration),
-                )
-                torch.save(
-                    self.model.state_dict(), target_model_filepath
-                )  # Saving model parameters
-
-            # Exiting training outer-loop when reaching early stopping condition
-            if self.train_logger.do_early_stopping(
-                nb_iterations=self.patience
-            ):
-                logging.info(
-                    "Activating early stopping (current iteration={:03d}, best iteration={:03d})".format(
-                        idx_iteration,
-                        best_ite,
-                    )
-                )
-                logging.info(
-                    "Main score: {}".format(
-                        self.train_logger.dev_scores[best_ite]
-                    )
-                )
-                for name, value in self.train_logger.dev_other_scores[
-                    best_ite
-                ].items():
-                    logging.info("{} = {}".format(name, value))
-                break
-
-        # Dumping training log values to disk
-        logging.info("Dumping log object to disk")
-        target_log_file = os.path.join(
-            os.path.abspath(self.working_dir), "train_log.pkl"
-        )
-        target_tensorboard_log_file = os.path.join(
-            os.path.abspath(self.working_dir), "tb_log.pkl"
-        )
-        self.train_logger.dump_to_disk(
-            custom_log_file=target_log_file,
-            tensorboard_log_file=target_tensorboard_log_file,
-        )
-        self.train_logger.close_writer()
+    # def perform_training_old(self):
+    #     """
+    #     Perform training of a model
+    #
+    #     Args:
+    #         **kwargs: other arguments that will be forwarded to the custom functions
+    #
+    #     Returns:
+    #         None
+    #     """
+    #
+    #     # Creating directory where model parameters will be stored
+    #     model_parameter_target_dir = os.path.join(self.working_dir, "models")
+    #     ensure_dir(model_parameter_target_dir)
+    #
+    #     # Training outer-loop
+    #     for idx_iteration in range(1, self.max_iterations + 1):
+    #         logging.info(
+    #             "== BEGIN TRAINING ITERATION {:04d} ==".format(idx_iteration)
+    #         )
+    #
+    #         # Train for one iteration
+    #         self.do_one_iteration(idx_iteration=idx_iteration)
+    #
+    #         logging.info(
+    #             "== END TRAINING ITERATION {:04d} ==".format(idx_iteration)
+    #         )
+    #
+    #         logging.info(
+    #             "== BEGIN TESTING ON DEV FOR ITERATION {:04d} ==".format(
+    #                 idx_iteration
+    #             )
+    #         )
+    #
+    #         # Test on development dataset
+    #         self.test_on_dev(idx_iteration=idx_iteration)
+    #
+    #         logging.info(
+    #             "== END TESTING ON DEV FOR ITERATION {:04d} ==".format(
+    #                 idx_iteration
+    #             )
+    #         )
+    #
+    #         # Fetching best iteration index
+    #         best_ite, _ = self.train_logger.get_best_iteration()
+    #
+    #         # Saving current parameters if this iteration gives the best score on the development dataset
+    #         if best_ite == idx_iteration:
+    #             logging.info("Best model so far, saving parameters to disk.")
+    #             self.clear_model_dir(
+    #                 model_parameter_target_dir
+    #             )  # Clearing parameter directory
+    #
+    #             target_model_filepath = os.path.join(
+    #                 model_parameter_target_dir,
+    #                 "model-{}.pth".format(idx_iteration),
+    #             )
+    #             torch.save(
+    #                 self.model.state_dict(), target_model_filepath
+    #             )  # Saving model parameters
+    #
+    #         # Exiting training outer-loop when reaching early stopping condition
+    #         if self.train_logger.do_early_stopping(
+    #             nb_iterations=self.patience
+    #         ):
+    #             logging.info(
+    #                 "Activating early stopping (current iteration={:03d}, best iteration={:03d})".format(
+    #                     idx_iteration,
+    #                     best_ite,
+    #                 )
+    #             )
+    #             logging.info(
+    #                 "Main score: {}".format(
+    #                     self.train_logger.dev_scores[best_ite]
+    #                 )
+    #             )
+    #             for name, value in self.train_logger.dev_other_scores[
+    #                 best_ite
+    #             ].items():
+    #                 logging.info("{} = {}".format(name, value))
+    #             break
+    #
+    #     # Dumping training log values to disk
+    #     logging.info("Dumping log object to disk")
+    #     target_log_file = os.path.join(
+    #         os.path.abspath(self.working_dir), "train_log.pkl"
+    #     )
+    #     target_tensorboard_log_file = os.path.join(
+    #         os.path.abspath(self.working_dir), "tb_log.pkl"
+    #     )
+    #     self.train_logger.dump_to_disk(
+    #         custom_log_file=target_log_file,
+    #         tensorboard_log_file=target_tensorboard_log_file,
+    #     )
+    #     self.train_logger.close_writer()

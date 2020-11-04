@@ -12,120 +12,120 @@ from transformers.tokenization_bert import BertTokenizer
 from yaset.utils.misc import flatten
 
 
-class NERDatasetEnsemble(Dataset):
-    def __init__(
-        self,
-        model_mappings: dict = None,
-        instance_file: str = None,
-        testing: bool = None,
-        sentence_size_mapping: dict = None,
-    ):
-
-        self.mappings = model_mappings
-        self.instance_file = instance_file
-        self.testing = testing
-        self.sentence_size_mapping = sentence_size_mapping
-
-        self.instances = dict()
-
-        self.load_instances()
-
-    def __len__(self):
-
-        if self.testing:
-            return len(self.instances) // 10
-        else:
-            return len(self.instances)
-
-    def __getitem__(self, idx):
-
-        return self.instances[idx]
-
-    def create_instance(self, sequence_buffer: list = None):
-
-        new_instance = defaultdict(dict)
-
-        for model_id, model_mapping in self.mappings.items():
-            model_instance = {
-                "tok": list(),
-                "str": list(),
-                "chr_cnn": list(),
-                "chr_lstm": list(),
-                "lbl": list(),
-            }
-
-            for item in sequence_buffer:
-                token_form = item[0]
-                token_label = item[-1]
-
-                token_lower = token_form.lower()
-                token_chr_cnn = (
-                    [model_mapping["characters"].get("<bow>")]
-                    + [
-                        model_mapping["characters"].get(char)
-                        for char in token_form
-                        if model_mapping["characters"].get(char)
-                    ]
-                    + [model_mapping["characters"].get("<eow>")]
-                )
-                token_chr_lstm = [
-                    model_mapping["characters"].get(char)
-                    for char in token_form
-                    if model_mapping["characters"].get(char)
-                ]
-
-                model_instance["tok"].append(
-                    model_mapping["tokens"].get(
-                        token_lower, model_mapping["tokens"].get("<unk>")
-                    )
-                )
-                model_instance["str"].append(token_form)
-                model_instance["chr_cnn"].append(token_chr_cnn)
-                model_instance["chr_lstm"].append(token_chr_lstm)
-                model_instance["lbl"].append(
-                    model_mapping["ner_labels"].get(token_label)
-                )
-
-            for (lower, upper), sent_id in self.sentence_size_mapping.items():
-                if lower <= len(model_instance["str"]) <= upper:
-                    model_instance["sent_size"] = sent_id
-                    break
-
-            else:
-                raise Exception("Problem")
-
-            new_instance[model_id] = model_instance
-
-        return new_instance
-
-    def load_instances(self):
-
-        instance_idx = 0
-
-        with open(
-            os.path.abspath(self.instance_file), "r", encoding="UTF-8"
-        ) as input_file:
-            sequence_buffer = list()
-            for line in input_file:
-                if re.match("^$", line):
-                    if len(sequence_buffer) > 0:
-                        instance = self.create_instance(
-                            sequence_buffer=sequence_buffer
-                        )
-                        self.instances[instance_idx] = instance
-                        sequence_buffer = list()
-                        instance_idx += 1
-
-                    continue
-
-                sequence_buffer.append(line.rstrip("\n").split("\t"))
-
-            if len(sequence_buffer) > 0:
-                instance = self.create_instance(
-                    sequence_buffer=sequence_buffer
-                )
-                self.instances[instance_idx] = instance
-                instance_idx += 1
+# class NERDatasetEnsemble(Dataset):
+#     def __init__(
+#         self,
+#         model_mappings: dict = None,
+#         instance_file: str = None,
+#         testing: bool = None,
+#         sentence_size_mapping: dict = None,
+#     ):
+#
+#         self.mappings = model_mappings
+#         self.instance_file = instance_file
+#         self.testing = testing
+#         self.sentence_size_mapping = sentence_size_mapping
+#
+#         self.instances = dict()
+#
+#         self.load_instances()
+#
+#     def __len__(self):
+#
+#         if self.testing:
+#             return 128
+#         else:
+#             return len(self.instances)
+#
+#     def __getitem__(self, idx):
+#
+#         return self.instances[idx]
+#
+#     def create_instance(self, sequence_buffer: list = None):
+#
+#         new_instance = defaultdict(dict)
+#
+#         for model_id, model_mapping in self.mappings.items():
+#             model_instance = {
+#                 "tok": list(),
+#                 "str": list(),
+#                 "chr_cnn": list(),
+#                 "chr_lstm": list(),
+#                 "lbl": list(),
+#             }
+#
+#             for item in sequence_buffer:
+#                 token_form = item[0]
+#                 token_label = item[-1]
+#
+#                 token_lower = token_form.lower()
+#                 token_chr_cnn = (
+#                     [model_mapping["characters"].get("<bow>")]
+#                     + [
+#                         model_mapping["characters"].get(char)
+#                         for char in token_form
+#                         if model_mapping["characters"].get(char)
+#                     ]
+#                     + [model_mapping["characters"].get("<eow>")]
+#                 )
+#                 token_chr_lstm = [
+#                     model_mapping["characters"].get(char)
+#                     for char in token_form
+#                     if model_mapping["characters"].get(char)
+#                 ]
+#
+#                 model_instance["tok"].append(
+#                     model_mapping["tokens"].get(
+#                         token_lower, model_mapping["tokens"].get("<unk>")
+#                     )
+#                 )
+#                 model_instance["str"].append(token_form)
+#                 model_instance["chr_cnn"].append(token_chr_cnn)
+#                 model_instance["chr_lstm"].append(token_chr_lstm)
+#                 model_instance["lbl"].append(
+#                     model_mapping["ner_labels"].get(token_label)
+#                 )
+#
+#             for (lower, upper), sent_id in self.sentence_size_mapping.items():
+#                 if lower <= len(model_instance["str"]) <= upper:
+#                     model_instance["sent_size"] = sent_id
+#                     break
+#
+#             else:
+#                 raise Exception("Problem")
+#
+#             new_instance[model_id] = model_instance
+#
+#         return new_instance
+#
+#     def load_instances(self):
+#
+#         instance_idx = 0
+#
+#         with open(
+#             os.path.abspath(self.instance_file), "r", encoding="UTF-8"
+#         ) as input_file:
+#             sequence_buffer = list()
+#             for line in input_file:
+#                 if re.match("^$", line):
+#                     if len(sequence_buffer) > 0:
+#                         instance = self.create_instance(
+#                             sequence_buffer=sequence_buffer
+#                         )
+#                         self.instances[instance_idx] = instance
+#                         sequence_buffer = list()
+#                         instance_idx += 1
+#
+#                     continue
+#
+#                 sequence_buffer.append(line.rstrip("\n").split("\t"))
+#
+#             if len(sequence_buffer) > 0:
+#                 instance = self.create_instance(
+#                     sequence_buffer=sequence_buffer
+#                 )
+#                 self.instances[instance_idx] = instance
+#                 instance_idx += 1
 
 
 def collate_ner_ensemble(
@@ -305,23 +305,30 @@ class NERDataset(Dataset):
     def __init__(
         self,
         mappings: dict = None,
-        instance_json_file: str = None,
-        testing: bool = None,
+        instance_conll_file: str = None,
+        debug: bool = None,
         singleton_replacement_ratio: float = 0.0,
         bert_use: bool = False,
         bert_voc_dir: str = None,
         bert_lowercase: bool = False,
+        pretrained_use: bool = False,
+        char_use: bool = False,
+        elmo_use: bool = False,
     ):
 
         self.mappings = mappings
-        self.instance_json_file = instance_json_file
-        self.testing = testing
+        self.instance_conll_file = instance_conll_file
+        self.debug = debug
         self.singleton_replacement_ratio = singleton_replacement_ratio
 
         self.bert_use = bert_use
         self.bert_voc_dir = bert_voc_dir
         self.bert_lowercase = bert_lowercase
         self.bert_tokenizer = None
+
+        self.pretrained_use = pretrained_use
+        self.char_use = char_use
+        self.elmo_use = elmo_use
 
         if self.bert_use:
             self.bert_tokenizer = BertTokenizer.from_pretrained(
@@ -334,10 +341,7 @@ class NERDataset(Dataset):
 
     def __len__(self):
 
-        if self.testing:
-            return len(self.instances) // 10
-        else:
-            return len(self.instances)
+        return len(self.instances)
 
     def __getitem__(self, idx):
 
@@ -348,10 +352,10 @@ class NERDataset(Dataset):
         count = defaultdict(int)
 
         with open(
-            os.path.abspath(self.instance_json_file), "r", encoding="UTF-8"
+            os.path.abspath(self.instance_conll_file), "r", encoding="UTF-8"
         ) as input_file:
             for line in input_file:
-                if re.match("^$", line):
+                if re.match("^$", line) or re.match("^#", line):
                     continue
 
                 token = line.rstrip("\n").split("\t")[0]
@@ -367,68 +371,92 @@ class NERDataset(Dataset):
 
     def create_instance(self, sequence_buffer: list = None):
 
-        new_instance = {
-            "tok": list(),
-            "str": list(),
-            "chr_cnn_literal": list(),
-            "chr_cnn_utf8": list(),
-            "lbl": list(),
-        }
+        new_instance = dict()
+
+        if self.char_use:
+            new_instance["chr_cnn_literal"] = list()
+            new_instance["chr_cnn_utf8"] = list()
+
+        if self.pretrained_use:
+            new_instance["tok"] = list()
+
+        new_instance["lbl"] = list()
+
+        instance_str = list()
 
         for item in sequence_buffer:
             token_form = item[0]
             token_label = item[-1]
-
             token_lower = token_form.lower()
-            token_encoded = token_form.encode("UTF-8")
+            instance_str.append(token_form)
 
-            token_chr_cnn_literal = (
-                [self.mappings["characters_literal"].get("<bow>")]
-                + [
-                    self.mappings["characters_literal"].get(char)
-                    for char in token_form
-                    if self.mappings["characters_literal"].get(char)
-                ]
-                + [self.mappings["characters_literal"].get("<eow>")]
-            )
+            if self.char_use:
+                token_lower = token_form.lower()
+                token_encoded = token_form.encode("UTF-8")
 
-            token_chr_cnn_utf8 = (
-                [self.mappings["characters_utf8"].get("<bow>")]
-                + [char for char in token_encoded]
-                + [self.mappings["characters_utf8"].get("<eow>")]
-            )
-
-            if token_lower in self.singletons:
-                if random.random() < self.singleton_replacement_ratio:
-                    new_instance["tok"].append(
-                        self.mappings["tokens"].get("<unk>")
-                    )
-                else:
-                    new_instance["tok"].append(
-                        self.mappings["tokens"].get(
-                            token_lower, self.mappings["tokens"].get("<unk>")
-                        )
-                    )
-            else:
-                new_instance["tok"].append(
-                    self.mappings["tokens"].get(
-                        token_lower, self.mappings["tokens"].get("<unk>")
-                    )
+                token_chr_cnn_literal = (
+                    [
+                        self.mappings.get("chrs")
+                        .get("char_literal")
+                        .get("<bow>")
+                    ]
+                    + [
+                        self.mappings.get("chrs").get("char_literal").get(char)
+                        for char in token_form
+                        if self.mappings.get("chrs")
+                        .get("char_literal")
+                        .get(char)
+                    ]
+                    + [
+                        self.mappings.get("chrs")
+                        .get("char_literal")
+                        .get("<eow>")
+                    ]
                 )
 
-            new_instance["str"].append(token_form)
+                token_chr_cnn_utf8 = (
+                    [self.mappings.get("chrs").get("char_utf8").get("<bow>")]
+                    + [char for char in token_encoded]
+                    + [self.mappings.get("chrs").get("char_utf8").get("<eow>")]
+                )
 
-            new_instance["chr_cnn_literal"].append(token_chr_cnn_literal)
-            new_instance["chr_cnn_utf8"].append(token_chr_cnn_utf8)
+                new_instance["chr_cnn_literal"].append(token_chr_cnn_literal)
+                new_instance["chr_cnn_utf8"].append(token_chr_cnn_utf8)
+
+            if self.pretrained_use:
+                if token_lower in self.singletons:
+                    if random.random() < self.singleton_replacement_ratio:
+                        new_instance["tok"].append(
+                            self.mappings.get("toks").get("oov_id")
+                        )
+                    else:
+                        new_instance["tok"].append(
+                            self.mappings.get("toks")
+                            .get("tokens")
+                            .get(
+                                token_lower,
+                                self.mappings.get("toks").get("oov_id"),
+                            )
+                        )
+                else:
+                    new_instance["tok"].append(
+                        self.mappings.get("toks")
+                        .get("tokens")
+                        .get(
+                            token_lower,
+                            self.mappings.get("toks").get("oov_id"),
+                        )
+                    )
 
             new_instance["lbl"].append(
-                self.mappings["ner_labels"].get(token_label)
+                self.mappings.get("lbls").get(token_label)
             )
 
+        new_instance["str"] = instance_str
+
         if self.bert_use:
-            # BERT
             seq_token_pieces = list(
-                map(self.bert_tokenizer.tokenize, new_instance["str"])
+                map(self.bert_tokenizer.tokenize, instance_str)
             )
             seq_token_lens = list(map(len, seq_token_pieces))
             seq_token_pieces = (
@@ -449,11 +477,11 @@ class NERDataset(Dataset):
         instance_idx = 0
 
         with open(
-            os.path.abspath(self.instance_json_file), "r", encoding="UTF-8"
+            os.path.abspath(self.instance_conll_file), "r", encoding="UTF-8"
         ) as input_file:
             sequence_buffer = list()
             for line in input_file:
-                if re.match("^$", line):
+                if re.match("^$", line) or re.match("^#", line):
                     if len(sequence_buffer) > 0:
                         instance = self.create_instance(
                             sequence_buffer=sequence_buffer
@@ -461,6 +489,8 @@ class NERDataset(Dataset):
                         self.instances[instance_idx] = instance
                         sequence_buffer = list()
                         instance_idx += 1
+                        if instance_idx == 128 and self.debug:
+                            break
 
                     continue
 
@@ -473,6 +503,11 @@ class NERDataset(Dataset):
                 self.instances[instance_idx] = instance
                 instance_idx += 1
 
+        if self.debug:
+            self.instances = {
+                k: v for k, v in self.instances.items() if k < 128
+            }
+
 
 def collate_ner(
     batch,
@@ -480,6 +515,9 @@ def collate_ner(
     chr_pad_id_literal: int = None,
     chr_pad_id_utf8: int = None,
     bert_use: bool = False,
+    char_use: bool = False,
+    elmo_use: bool = False,
+    pretrained_use: bool = False,
     options: dict = None,
 ):
 
@@ -489,20 +527,21 @@ def collate_ner(
     len_tok = list()
 
     for instance in batch:
-        for item in instance["chr_cnn_literal"]:
-            len_char_cnn_literal.append(len(item))
+        if char_use:
+            for item in instance["chr_cnn_literal"]:
+                len_char_cnn_literal.append(len(item))
 
-        for item in instance["chr_cnn_utf8"]:
-            len_char_cnn_utf8.append(len(item))
+            for item in instance["chr_cnn_utf8"]:
+                len_char_cnn_utf8.append(len(item))
 
-        len_tok.append(len(instance["chr_cnn_literal"]))
-
-    max_len_chr_cnn_literal = max(len_char_cnn_literal)
-    max_len_chr_cnn_utf8 = max(len_char_cnn_utf8)
+        len_tok.append(len(instance["lbl"]))
 
     max_len_tok = max(len_tok)
 
-    if options.get("embeddings").get("chr_cnn").get("use"):
+    if char_use:
+        max_len_chr_cnn_literal = max(len_char_cnn_literal)
+        max_len_chr_cnn_utf8 = max(len_char_cnn_utf8)
+
         max_kernel_size = max(
             [
                 k
@@ -533,58 +572,69 @@ def collate_ner(
     all_input_ids = list()
 
     for instance in batch:
+        # MASK
+        # ===========================================================
         mask = list()
 
-        # CHAR LITERAL
-        # ===========================================================
-        chr_list_cnn_literal = list()
-
-        for token_chars in instance["chr_cnn_literal"]:
-            cur_chars = copy.deepcopy(token_chars)
-
-            while len(cur_chars) < max_len_chr_cnn_literal:
-                cur_chars.append(chr_pad_id_literal)
-
-            chr_list_cnn_literal.append(cur_chars)
-
+        for _ in instance["lbl"]:
             mask.append(1)
 
-        while len(chr_list_cnn_literal) < max_len_tok:
-            cur_chars = [
-                chr_pad_id_literal for _ in range(max_len_chr_cnn_literal)
-            ]
-            chr_list_cnn_literal.append(cur_chars)
-
+        while len(mask) < max_len_tok:
             mask.append(0)
 
-        # CHAR UTF-8
-        # ===========================================================
-        chr_list_cnn_utf8 = list()
+        if char_use:
+            # CHAR LITERAL
+            # =======================================================
+            chr_list_cnn_literal = list()
 
-        for token_chars in instance["chr_cnn_utf8"]:
-            cur_chars = copy.deepcopy(token_chars)
+            for token_chars in instance["chr_cnn_literal"]:
+                cur_chars = copy.deepcopy(token_chars)
 
-            while len(cur_chars) < max_len_chr_cnn_utf8:
-                cur_chars.append(chr_pad_id_utf8)
+                while len(cur_chars) < max_len_chr_cnn_literal:
+                    cur_chars.append(chr_pad_id_literal)
 
-            chr_list_cnn_utf8.append(cur_chars)
+                chr_list_cnn_literal.append(cur_chars)
 
-        while len(chr_list_cnn_utf8) < max_len_tok:
-            cur_chars = [chr_pad_id_utf8 for _ in range(max_len_chr_cnn_utf8)]
-            chr_list_cnn_utf8.append(cur_chars)
+                # mask.append(1)
 
-        final_batch["chr_cnn_literal"].append(chr_list_cnn_literal)
-        final_batch["chr_cnn_utf8"].append(chr_list_cnn_utf8)
+            while len(chr_list_cnn_literal) < max_len_tok:
+                cur_chars = [
+                    chr_pad_id_literal for _ in range(max_len_chr_cnn_literal)
+                ]
+                chr_list_cnn_literal.append(cur_chars)
+
+                # mask.append(0)
+
+            # CHAR UTF-8
+            # ===========================================================
+            chr_list_cnn_utf8 = list()
+
+            for token_chars in instance["chr_cnn_utf8"]:
+                cur_chars = copy.deepcopy(token_chars)
+
+                while len(cur_chars) < max_len_chr_cnn_utf8:
+                    cur_chars.append(chr_pad_id_utf8)
+
+                chr_list_cnn_utf8.append(cur_chars)
+
+            while len(chr_list_cnn_utf8) < max_len_tok:
+                cur_chars = [
+                    chr_pad_id_utf8 for _ in range(max_len_chr_cnn_utf8)
+                ]
+                chr_list_cnn_utf8.append(cur_chars)
+
+            final_batch["chr_cnn_literal"].append(chr_list_cnn_literal)
+            final_batch["chr_cnn_utf8"].append(chr_list_cnn_utf8)
 
         # STRINGS
         # =======
         final_batch["str"].append(instance["str"])
 
-        # TOKENS
-        # ======
-        final_batch["tok_len"].append(len(instance["chr_cnn_literal"]))
+        final_batch["tok_len"].append(len(instance["lbl"]))
 
-        if options.get("embeddings").get("pretrained").get("use"):
+        if pretrained_use:
+            # TOKENS
+            # ======
             cur_tokens = copy.deepcopy(instance["tok"])
 
             while len(cur_tokens) < max_len_tok:

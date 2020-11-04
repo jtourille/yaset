@@ -51,7 +51,7 @@ class Embedder(nn.Module):
             logging.debug("Initializing char_cnn module")
 
             if self.embeddings_options.get("chr_cnn").get("type") == "literal":
-                embed_len = len(mappings["characters_literal"])
+                embed_len = len(mappings["chrs"].get("char_literal"))
                 self.char_cnn_type = "literal"
 
             elif self.embeddings_options.get("chr_cnn").get("type") == "utf8":

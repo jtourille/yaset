@@ -472,19 +472,17 @@ class AugmentedLSTMCRF(nn.Module):
             layer_output,
         )
 
-    def get_labels(self, batch, cuda, idx_iteration: int = None):
+    def get_labels(self, batch, cuda):
 
         inverted_label_mapping = {
-            v: k for k, v in self.mappings["ner_labels"].items()
+            v: k for k, v in self.mappings["lbls"].items()
         }
 
         if cuda:
             batch["labels"] = batch["labels"].cuda()
             batch["mask"] = batch["mask"].cuda()
 
-        layer_output = self.forward(
-            batch=batch, cuda=cuda, idx_iteration=idx_iteration
-        )
+        layer_output = self.forward(batch=batch, cuda=cuda)
         logits = self.projection_layer(layer_output)
         best_paths = self.crf.viterbi_tags(logits, batch["mask"])
 
@@ -518,7 +516,7 @@ class AugmentedLSTMCRF(nn.Module):
     def infer_labels(self, batch, cuda):
 
         inverted_label_mapping = {
-            v: k for k, v in self.mappings["ner_labels"].items()
+            v: k for k, v in self.mappings["lbls"].items()
         }
 
         if cuda:
