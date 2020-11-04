@@ -27,6 +27,7 @@ pytest = "^5.2"
 black = "^20.8b1"
 flake8 = "^3.8.3"
 pre-commit = "^2.7.1"
+jupyterlab = "^2.2.9"
 
 [tool.poetry.scripts]
 yaset = 'yaset.yaset:cli'
