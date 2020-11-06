@@ -21,6 +21,8 @@ gensim = "^3.8.3"
 numpy = "^1.19.2"
 allennlp = "^1.1.0"
 seqeval = "^0.0.18"
+optuna = "^2.3.0"
+pymysql = "^0.10.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
