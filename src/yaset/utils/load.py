@@ -7,7 +7,7 @@ import torch
 from yaset.nn.crf import allowed_transitions
 from yaset.nn.embedding import Embedder
 from yaset.nn.lstmcrf import AugmentedLSTMCRF
-from yaset.single.nn import NERModel
+from yaset.single.inference import NERModel
 from yaset.utils.config import replace_auto
 from yaset.utils.logging import TrainLogger
 
