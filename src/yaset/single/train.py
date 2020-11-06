@@ -259,10 +259,10 @@ def train_single_model(
         ffnn_input_dropout_rate=options.get("network_structure")
         .get("ffnn")
         .get("input_dropout_rate"),
-        input_size=embedder.embedding_size,
-        lstm_input_dropout_rate=options.get("network_structure").get(
-            "input_dropout_rate"
-        ),
+        embedding_input_size=embedder.embedding_size,
+        lstm_input_dropout_rate=options.get("network_structure")
+        .get("lstm")
+        .get("input_dropout_rate"),
         lstm_hidden_size=options.get("network_structure")
         .get("lstm")
         .get("hidden_size"),
@@ -270,11 +270,11 @@ def train_single_model(
         .get("lstm")
         .get("layer_dropout_rate"),
         mappings=all_mappings,
-        nb_layers=options.get("network_structure")
+        lstm_nb_layers=options.get("network_structure")
         .get("lstm")
         .get("nb_layers"),
         num_labels=len(all_mappings.get("lbls")),
-        use_highway=options.get("network_structure")
+        lstm_use_highway=options.get("network_structure")
         .get("lstm")
         .get("highway"),
     )

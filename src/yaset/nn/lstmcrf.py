@@ -235,14 +235,14 @@ class AugmentedLSTMCRF(nn.Module):
         ffnn_hidden_layer_size: int = None,
         ffnn_activation_function: str = None,
         ffnn_input_dropout_rate: float = None,
-        input_size: int = None,
+        embedding_input_size: int = None,
         lstm_hidden_size: int = None,
         lstm_input_dropout_rate: float = None,
         lstm_layer_dropout_rate: int = None,
         mappings: dict = None,
-        nb_layers: int = None,
+        lstm_nb_layers: int = None,
         num_labels: int = None,
-        use_highway: bool = False,
+        lstm_use_highway: bool = False,
     ):
         super().__init__()
 
@@ -252,20 +252,20 @@ class AugmentedLSTMCRF(nn.Module):
         self.ffnn_hidden_layer_size = ffnn_hidden_layer_size
         self.ffnn_activation_function = ffnn_activation_function
         self.ffnn_input_dropout_rate = ffnn_input_dropout_rate
-        self.input_size = input_size
+        self.embedding_input_size = embedding_input_size
         self.lstm_hidden_size = lstm_hidden_size
         self.lstm_input_dropout_rate = lstm_input_dropout_rate
         self.lstm_layer_dropout_rate = lstm_layer_dropout_rate
         self.mappings = mappings
-        self.nb_layers = nb_layers
+        self.lstm_nb_layers = lstm_nb_layers
         self.num_labels = num_labels
-        self.use_highway = use_highway
+        self.lstm_use_highway = lstm_use_highway
 
         self.lstm_stack = self.create_lstm_stack()
         self.projection_layer = self.create_final_layer()
 
-        if self.nb_layers == 0:
-            self.ensemble_output_size = self.input_size
+        if self.lstm_nb_layers == 0:
+            self.ensemble_output_size = self.embedding_input_size
         else:
             self.ensemble_output_size = self.lstm_hidden_size * 2
 
@@ -276,8 +276,8 @@ class AugmentedLSTMCRF(nn.Module):
     def create_final_layer(self):
 
         if self.ffnn_hidden_layer_use:
-            if self.nb_layers == 0:
-                current_input_projection = self.input_size
+            if self.lstm_nb_layers == 0:
+                current_input_projection = self.embedding_input_size
             else:
                 current_input_projection = self.lstm_hidden_size * 2
 
@@ -314,8 +314,8 @@ class AugmentedLSTMCRF(nn.Module):
             projection_layer = nn.Sequential(*module_list)
 
         else:
-            if self.nb_layers == 0:
-                current_input_projection = self.input_size
+            if self.lstm_nb_layers == 0:
+                current_input_projection = self.embedding_input_size
             else:
                 current_input_projection = self.lstm_hidden_size * 2
 
@@ -329,23 +329,23 @@ class AugmentedLSTMCRF(nn.Module):
 
         layers = nn.ModuleDict()
 
-        if self.nb_layers > 0:
+        if self.lstm_nb_layers > 0:
             layer_idx = 0
 
             layers[str(layer_idx)] = LSTMAugmented(
                 lstm_hidden_size=self.lstm_hidden_size,
                 input_dropout_rate=self.lstm_input_dropout_rate,
-                input_size=self.input_size,
-                use_highway=self.use_highway,
+                input_size=self.embedding_input_size,
+                use_highway=self.lstm_use_highway,
             )
             layer_idx += 1
 
-            while layer_idx < self.nb_layers:
+            while layer_idx < self.lstm_nb_layers:
                 layers[str(layer_idx)] = LSTMAugmented(
                     lstm_hidden_size=self.lstm_hidden_size,
                     input_dropout_rate=self.lstm_layer_dropout_rate,
                     input_size=self.lstm_hidden_size * 2,
-                    use_highway=self.use_highway,
+                    use_highway=self.lstm_use_highway,
                 )
                 layer_idx += 1
 
@@ -359,14 +359,11 @@ class AugmentedLSTMCRF(nn.Module):
         if cuda:
             batch["chr_cnn_literal"] = batch["chr_cnn_literal"].cuda()
             batch["chr_cnn_utf8"] = batch["chr_cnn_utf8"].cuda()
-            # batch["chr_lstm_type1"] = batch["chr_lstm_type1"].cuda()
-            # batch["chr_lstm_type2"] = batch["chr_lstm_type2"].cuda()
             batch["tok"] = batch["tok"].cuda()
             batch["elmo"] = batch["elmo"].cuda()
 
         batch_embed = self.embedder(batch, cuda)
 
-        # Sorting batch by size (from
         batch_len_sort, batch_perm_idx = batch["tok_len"].sort(descending=True)
         batch_embed = batch_embed[batch_perm_idx]
         batch_packed = pack_padded_sequence(
