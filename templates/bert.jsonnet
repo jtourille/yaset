@@ -5,7 +5,7 @@ local data_dir = "/path/to/data";
     "model_name": "bilstmcrf",
 
     // Activate testing mode, reduce dataset size (10x factor)
-    "testing": true,
+    "debug": false,
 
     "data": {
         // Path to your train and test files (in CoNLL format)
@@ -20,7 +20,7 @@ local data_dir = "/path/to/data";
         "input_dropout_rate": 0.2,
 
         "lstm": {
-            "nb_layers": 2, // Number of LSTM layers
+            "nb_layers": 0, // Number of LSTM layers
             "hidden_size": 512, // LSTM hidden size
             "layer_dropout_rate": 0.5,
             "highway": true, // Do you want to use highway connections?
@@ -34,41 +34,50 @@ local data_dir = "/path/to/data";
         }
     },
     "training": {
-        "optimizer": "adam", # ["adam", "adamw"]
-        "weight_decay": 0.0,
-        "lr_rate": 0.001,
-        "fp16": false,
+        "optimizer": "adamw", # ["adam", "adamw"]
+        "weight_decay": 0.01,
+        "lr_rate": 2e-5,
+        "clip_grad_norm": null,
+
+        "cuda": true,
+        "fp16": true,
         "fp16_level": "O1",
 
-        "max_iterations": 100,
-        "patience": 10,
-        "cuda": true,
-        "train_batch_size": 32, # Mini-batch that will be sent to the GPU
+        "train_batch_size": 8,
         "accumulation_steps": 1,
-        "clip_grad_norm": 5.0,
-        "test_batch_size": 32,
+        "test_batch_size": 128,
+
         "num_global_workers": 12,
         "num_dataloader_workers": 4,
 
-        "lr_scheduler": {
+        "warmup_scheduler": {
             "use": true,
+            "%_warmup_steps": 0.10,
+        },
+
+        "lr_scheduler": {
+            "use": false,
             "mode": "max",
             "factor": 0.5,
             "patience": 5,
             "verbose": true,
             "threshold": 0.0001,
             "threshold_mode": "rel"
-        }
+        },
+
+        "eval_every_%": 0.20,
+        "num_epochs": 10,
+
     },
   "embeddings": {
     "pretrained": {
-      "use": true,
+      "use": false,
       "format": "w2v", // gensim or glove
       "model_path": data_dir + "/glove/glove.6B/glove.6B.300d.txt",
       "singleton_replacement_ratio": 0.2
     },
     "chr_cnn": {
-      "use": true,
+      "use": false,
       "type": "literal", // ["literal", "utf8"]
       "char_embedding_size": 25,
       "cnn_filters": [
@@ -85,14 +94,14 @@ local data_dir = "/path/to/data";
       "options_path": data_dir + "/elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
     },
     "bert":{
-        "use": false,
-        "fine_tune": false,
+        "use": true,
+        "fine_tune": true,
         "type": "pytorch",
         "do_lower_case": true,
         "model_file": data_dir + "/bert/pytorch/bert-base-uncased-pytorch_model.bin",
         "vocab_file": data_dir + "/bert/pytorch/bert-base-uncased-vocab.txt",
         "config_file": data_dir + "/bert/pytorch/bert-base-uncased-config.json",
-        "only_final_layer": false
+        "only_final_layer": true
     }
   }
 }
