@@ -1,10 +1,9 @@
 local data_dir = "/path/to/data";
 
 {
-    // Model type. See Lample et al. (2016) or Ma and Hovy (2016) for further information
     "model_name": "bilstmcrf",
 
-    // Activate testing mode, reduce dataset size (10x factor)
+    // Activate debug mode: enforce some paramater values to finish quickly model training
     "debug": false,
 
     "data": {
@@ -12,18 +11,18 @@ local data_dir = "/path/to/data";
         "train_file": data_dir + "/train.conll",
         "dev_file": data_dir + "/dev.conll",
 
-        // Label format: you can choose between IOB1, IOB2, IOBES
+        // Label format: limited to IOBES (for now)
         // Please ensure the consistency of your dataset as no check will be performed (for now)
         "format": "IOBES"
     },
     "network_structure": {
-        "input_dropout_rate": 0.2,
 
         "lstm": {
             "nb_layers": 0, // Number of LSTM layers
             "hidden_size": 512, // LSTM hidden size
             "layer_dropout_rate": 0.5,
             "highway": true, // Do you want to use highway connections?
+            "input_dropout_rate": 0.2,
         },
 
         "ffnn": {
