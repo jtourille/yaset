@@ -9,7 +9,7 @@
  
 ## Documentation
 
-**Will be available soon**
+The documentation is under construction at this location: [https://yaset.readthedocs.io](https://yaset.readthedocs.io)
 
 ## Acknowledgements
 
