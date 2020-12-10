@@ -42,6 +42,7 @@ def load_model_single(model_dir: str = None, cuda: bool = None):
 def load_model(model_dir: str = None):
     """
     Load a single NER model
+
     Args:
         model_dir (str): NER model directory
 
