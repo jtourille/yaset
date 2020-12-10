@@ -10,7 +10,15 @@ Welcome to YASET - Yet Another Sequence Tagger's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+.. toctree::
+   :maxdepth: 0
+   :caption: YASET API
+   :hidden:
 
+   yaset.nn
+   yaset.single
+   yaset.tools
+   yaset.utils
 
 Indices and tables
 ==================
