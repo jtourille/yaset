@@ -1,6 +1,6 @@
 # YASET - Yet Another SEquence Tagger 
 
-[![Documentation Status](https://readthedocs.org/projects/yaset/badge/?version=stable)](https://yaset.readthedocs.io/en/stable/?badge=stable)
+[![Documentation Status](https://readthedocs.org/projects/yaset/badge/?version=latest)](https://yaset.readthedocs.io/en/stable/?badge=latest)
 
 `yaset` is a sequence tagger written in [Python](https://www.python.org/).
  This tool can be used for various NLP-related sequence tagging tasks (e.g. 
