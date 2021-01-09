@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from allennlp.modules.elmo import Elmo
-from transformers.modeling_bert import BertModel, BertConfig
-from transformers.tokenization_bert import BertTokenizer
+from transformers import BertModel, BertConfig
+from transformers import BertTokenizer
 from yaset.nn.cnn import CharCNN
 
 
