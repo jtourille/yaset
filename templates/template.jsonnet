@@ -1,8 +1,5 @@
 local data_dir = "/path/to/data";
-
 {
-    "model_name": "bilstmcrf",
-
     // Activate debug mode: enforce some paramater values to finish quickly model training
     "debug": false,
 
@@ -18,42 +15,44 @@ local data_dir = "/path/to/data";
     "network_structure": {
 
         "lstm": {
-            "nb_layers": 0, // Number of LSTM layers
+            "nb_layers": 2, // Number of LSTM layers
             "hidden_size": 512, // LSTM hidden size
-            "layer_dropout_rate": 0.5,
+            "layer_dropout_rate": 0.5, // Hidden layer dropout rate
             "highway": true, // Do you want to use highway connections?
-            "input_dropout_rate": 0.2,
+            "input_dropout_rate": 0.2, // Input dropout rate (!)
         },
 
         "ffnn": {
             "use": true, // Do you want to use a feed forward neural network before projection and classification?
-            "hidden_layer_size": "auto", // FFNN hidden size
+            "hidden_layer_size": "auto", // FFNN hidden size (auto: half size of input layer)
             "activation_function": "relu", // You can choose between relu and tanh
-            "input_dropout_rate": 0.2
+            "input_dropout_rate": 0.2 // Input dropout rate (!)
         }
     },
     "training": {
         "optimizer": "adamw", # ["adam", "adamw"]
         "weight_decay": 0.01,
         "lr_rate": 2e-5,
-        "clip_grad_norm": null,
+        "clip_grad_norm": null, # null or float
 
-        "cuda": true,
-        "fp16": true,
-        "fp16_level": "O1",
+        "cuda": true, # Use GPU for computation
+        "fp16": true, # Activate mixed precision
+        "fp16_level": "O1", # Mixed precision level (O1 supported)
 
         "train_batch_size": 8,
-        "accumulation_steps": 1,
+        "accumulation_steps": 1, # Use this parameter to get larger batch size
         "test_batch_size": 128,
 
-        "num_global_workers": 12,
-        "num_dataloader_workers": 4,
+        "num_global_workers": 12, # Number of processes used for computation
+        "num_dataloader_workers": 4, # Number of processes used for each dataloader
 
+        # Warmup scheduler: increase the learning rate for a given number of steps, then decrease it
         "warmup_scheduler": {
             "use": true,
             "%_warmup_steps": 0.10,
         },
 
+        # Learning rate scheduler (plateau)
         "lr_scheduler": {
             "use": false,
             "mode": "max",
@@ -64,8 +63,8 @@ local data_dir = "/path/to/data";
             "threshold_mode": "rel"
         },
 
-        "eval_every_%": 0.20,
-        "num_epochs": 10,
+        "eval_every_%": 0.20, # Dev corpus evaluation frequency (fraction of training corpus)
+        "num_epochs": 10, # Maximum number of epochs to perform
 
     },
   "embeddings": {
